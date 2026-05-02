@@ -10,6 +10,7 @@ import scheduleEventsRouter from "./scheduleEvents";
 import exportRouter from "./export";
 import systemPromptRouter from "./systemPrompt";
 import progressRouter from "./progress";
+import progressHistoryRouter from "./progressHistory";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(scheduleEventsRouter);
 router.use(exportRouter);
 router.use(systemPromptRouter);
 router.use(progressRouter);
+router.use(progressHistoryRouter);
 
 export default router;
