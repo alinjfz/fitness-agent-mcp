@@ -12,6 +12,7 @@ import systemPromptRouter from "./systemPrompt";
 import progressRouter from "./progress";
 import progressHistoryRouter from "./progressHistory";
 import ingestRouter from "./ingest";
+import deleteLogRouter from "./deleteLog";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(systemPromptRouter);
 router.use(progressRouter);
 router.use(progressHistoryRouter);
 router.use(ingestRouter);
+router.use(deleteLogRouter);
 
 export default router;
