@@ -2,14 +2,25 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.0.0
+  description: |
+    Fitness Agent Layer API — a single backend exposing fitness tools to both
+    ChatGPT (Custom GPT Actions) and Claude (MCP server).
+    
+    Use userId to scope all state to a specific user. A simple string like
+    "user_123" or an email is fine for single-user setups.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: state
+    description: Read and write the full fitness state for a user
+  - name: tools
+    description: Core fitness agent tools
+  - name: mcp
+    description: Model Context Protocol server for Claude integration
 paths:
   /healthz:
     get:
@@ -24,6 +35,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /state/{userId}:
+    get:
+      operationId: getState
+      tags: [state]
+      summary: Get full state for a user
+      description: |
+        Returns the complete fitness state for a user: profile, diet plan,
+        workout plan, schedule, and progress.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique user identifier
+      responses:
+        "200":
+          description: Full fitness state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FitnessState"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: saveState
+      tags: [state]
+      summary: Save or update user fitness state
+      description: |
+        Upserts the fitness state for a user. You can update the entire state
+        or only specific sections (profile, dietPlan, workoutPlan, schedule).
+        Omitted sections are left unchanged.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique user identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveStateRequest"
+      responses:
+        "200":
+          description: Updated fitness state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FitnessState"
+
+  /log-completion:
+    post:
+      operationId: logCompletion
+      tags: [tools]
+      summary: Log a workout or diet completion event
+      description: |
+        Records that the user completed a workout session or followed their
+        diet plan. Awards XP, updates streak, and returns gamification feedback.
+        
+        XP rules:
+        - Workout completion: 50 XP base
+        - Diet completion: 30 XP base
+        - Streak bonus: +10 XP per day of active streak
+        - Level up at every 500 XP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogCompletionRequest"
+      responses:
+        "200":
+          description: Completion logged with gamification feedback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogCompletionResponse"
+
+  /normalize:
+    post:
+      operationId: normalizeUserInput
+      tags: [tools]
+      summary: Normalize messy user input into structured fitness data
+      description: |
+        Takes raw, unstructured user text (e.g. "i go gym monday maybe 6pm,
+        i like chicken, hate fish") and uses AI to extract and return a
+        structured fitness profile patch. The AI figures out what fields
+        can be inferred and returns only those — you can then pass the result
+        to save_state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NormalizeRequest"
+      responses:
+        "200":
+          description: Structured data extracted from the input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NormalizeResponse"
+
+  /mcp:
+    post:
+      operationId: mcpEndpoint
+      tags: [mcp]
+      summary: MCP server endpoint for Claude integration
+      description: |
+        Model Context Protocol (MCP) JSON-RPC endpoint. Connect Claude Desktop
+        or any MCP client to this URL to get access to all fitness agent tools:
+        get_state, save_state, log_completion, normalize_user_input.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: MCP JSON-RPC request
+      responses:
+        "200":
+          description: MCP JSON-RPC response
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +180,401 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    UserProfile:
+      type: object
+      description: User's personal data and fitness preferences
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        age:
+          type: integer
+          nullable: true
+        weightKg:
+          type: number
+          nullable: true
+        heightCm:
+          type: number
+          nullable: true
+        goal:
+          type: string
+          enum: [lose_weight, build_muscle, maintain, improve_endurance]
+        allergies:
+          type: array
+          items:
+            type: string
+        preferences:
+          type: array
+          items:
+            type: string
+        budgetPerWeek:
+          type: number
+          nullable: true
+        availableDays:
+          type: array
+          items:
+            type: string
+            enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+        sessionDurationMin:
+          type: integer
+          nullable: true
+        equipment:
+          type: array
+          items:
+            type: string
+        injuries:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+          enum: [auto, confirm]
+      required:
+        - userId
+        - name
+        - goal
+        - allergies
+        - preferences
+        - availableDays
+        - equipment
+        - injuries
+        - mode
+
+    Meal:
+      type: object
+      properties:
+        name:
+          type: string
+        time:
+          type: string
+        calories:
+          type: integer
+        protein:
+          type: number
+        carbs:
+          type: number
+        fat:
+          type: number
+        ingredients:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - calories
+        - protein
+        - carbs
+        - fat
+        - ingredients
+
+    Macros:
+      type: object
+      properties:
+        proteinG:
+          type: number
+        carbsG:
+          type: number
+        fatG:
+          type: number
+      required:
+        - proteinG
+        - carbsG
+        - fatG
+
+    DietPlan:
+      type: object
+      properties:
+        meals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Meal"
+        dailyCalories:
+          type: integer
+        macros:
+          $ref: "#/components/schemas/Macros"
+        notes:
+          type: string
+          nullable: true
+      required:
+        - meals
+        - dailyCalories
+        - macros
+
+    WorkoutSession:
+      type: object
+      properties:
+        day:
+          type: string
+          enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+        name:
+          type: string
+        durationMin:
+          type: integer
+        exercises:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              sets:
+                type: integer
+              reps:
+                type: integer
+              restSec:
+                type: integer
+            required:
+              - name
+      required:
+        - day
+        - name
+        - durationMin
+        - exercises
+
+    WorkoutPlan:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutSession"
+        notes:
+          type: string
+          nullable: true
+      required:
+        - sessions
+
+    ScheduleEvent:
+      type: object
+      properties:
+        title:
+          type: string
+        date:
+          type: string
+          format: date
+        time:
+          type: string
+        type:
+          type: string
+          enum: [workout, meal, check_in]
+        durationMin:
+          type: integer
+      required:
+        - title
+        - date
+        - type
+
+    Schedule:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleEvent"
+      required:
+        - events
+
+    CompletionEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [workout, diet]
+        completedAt:
+          type: string
+          format: date-time
+        xpGained:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+      required:
+        - type
+        - completedAt
+        - xpGained
+
+    Progress:
+      type: object
+      properties:
+        xp:
+          type: integer
+        streak:
+          type: integer
+        level:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletionEvent"
+        lastLoggedAt:
+          type: string
+          format: date-time
+          nullable: true
+        xpToNextLevel:
+          type: integer
+      required:
+        - xp
+        - streak
+        - level
+        - history
+
+    FitnessState:
+      type: object
+      description: Complete fitness state for a user
+      properties:
+        profile:
+          $ref: "#/components/schemas/UserProfile"
+          nullable: true
+        dietPlan:
+          $ref: "#/components/schemas/DietPlan"
+          nullable: true
+        workoutPlan:
+          $ref: "#/components/schemas/WorkoutPlan"
+          nullable: true
+        schedule:
+          $ref: "#/components/schemas/Schedule"
+          nullable: true
+        progress:
+          $ref: "#/components/schemas/Progress"
+          nullable: true
+      required:
+        - profile
+        - dietPlan
+        - workoutPlan
+        - schedule
+        - progress
+
+    SaveStateRequest:
+      type: object
+      description: Partial fitness state update — only include sections you want to change
+      properties:
+        profile:
+          type: object
+          description: User profile fields to upsert (all optional)
+          properties:
+            name:
+              type: string
+            age:
+              type: integer
+            weightKg:
+              type: number
+            heightCm:
+              type: number
+            goal:
+              type: string
+              enum: [lose_weight, build_muscle, maintain, improve_endurance]
+            allergies:
+              type: array
+              items:
+                type: string
+            preferences:
+              type: array
+              items:
+                type: string
+            budgetPerWeek:
+              type: number
+            availableDays:
+              type: array
+              items:
+                type: string
+            sessionDurationMin:
+              type: integer
+            equipment:
+              type: array
+              items:
+                type: string
+            injuries:
+              type: array
+              items:
+                type: string
+            mode:
+              type: string
+              enum: [auto, confirm]
+        dietPlan:
+          $ref: "#/components/schemas/DietPlan"
+        workoutPlan:
+          $ref: "#/components/schemas/WorkoutPlan"
+        schedule:
+          $ref: "#/components/schemas/Schedule"
+
+    LogCompletionRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+        type:
+          type: string
+          enum: [workout, diet]
+        notes:
+          type: string
+          nullable: true
+      required:
+        - userId
+        - type
+
+    LogCompletionResponse:
+      type: object
+      properties:
+        xpGained:
+          type: integer
+        totalXp:
+          type: integer
+        streak:
+          type: integer
+        level:
+          type: integer
+        leveledUp:
+          type: boolean
+        xpToNextLevel:
+          type: integer
+        message:
+          type: string
+      required:
+        - xpGained
+        - totalXp
+        - streak
+        - level
+        - leveledUp
+        - xpToNextLevel
+        - message
+
+    NormalizeRequest:
+      type: object
+      properties:
+        input:
+          type: string
+          description: Raw, unstructured user text about their fitness preferences
+        userId:
+          type: string
+          description: |
+            Optional — if provided, existing profile is used as context
+            for smarter extraction
+      required:
+        - input
+
+    NormalizeResponse:
+      type: object
+      properties:
+        extracted:
+          $ref: "#/components/schemas/SaveStateRequest"
+        rawInput:
+          type: string
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        notes:
+          type: string
+          description: AI explanation of what was and wasn't extractable
+      required:
+        - extracted
+        - rawInput
+        - confidence

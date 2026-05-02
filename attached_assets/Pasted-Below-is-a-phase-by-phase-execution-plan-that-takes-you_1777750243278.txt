@@ -1,0 +1,379 @@
+Below is a **phase-by-phase execution plan** that takes you from zero → usable cross-AI “fitness agent layer” without drifting into app-building.
+
+---
+
+# Phase 0 — Specification (non-negotiable foundation)
+
+You are defining a **protocol**, not building features yet.
+
+### Deliverables
+
+* Final JSON schema (single source of truth)
+* Tool contract (function signatures only)
+* Prompt contracts (input → structured output rules)
+
+### What to do
+
+1. **Lock schema**
+
+   * No iteration later unless versioned
+   * Include:
+
+     * user_profile
+     * diet_plan
+     * workout_plan
+     * schedule
+     * progress (xp, streak, history)
+
+2. **Define strict invariants**
+
+   * No free text stored
+   * All plans must be structured
+   * All updates go through tools
+
+3. **Define tool interface (no implementation yet)**
+
+```json id="bq1h7l"
+[
+  "normalize_user_input",
+  "generate_plan",
+  "save_state",
+  "get_state",
+  "log_completion",
+  "schedule_events",
+  "export_report"
+]
+```
+
+4. **Write system prompt (core behavior contract)**
+
+Focus on:
+
+* normalization first
+* structure enforcement
+* tool usage over text responses
+
+---
+
+# Phase 1 — Local Core Engine
+
+Now you build the **minimum backend that actually works locally**.
+
+### Goal
+
+Single-user, local JSON file, no cloud dependency.
+
+### Deliverables
+
+* Local storage module
+* Tool implementations (basic)
+* CLI or simple API
+
+### Implementation
+
+#### Storage
+
+* `state.json` as source of truth
+
+#### Implement tools
+
+* `save_state`
+* `get_state`
+* `log_completion`
+
+Keep it minimal. No integrations yet.
+
+#### Key detail
+
+`normalize_user_input` should:
+
+* take messy text
+* return valid schema JSON
+* reject invalid structure
+
+---
+
+# Phase 2 — AI Integration Layer (first usable version)
+
+Now you make it usable inside AI tools.
+
+---
+
+## 2A — ChatGPT integration
+
+Use:
+
+* Custom GPT + Actions
+
+Expose backend via OpenAPI:
+
+* endpoints = your tools
+
+Attach to:
+
+* ChatGPT
+
+---
+
+## 2B — Claude integration
+
+Use:
+
+* MCP server
+
+Expose same tools to:
+
+* Claude
+
+---
+
+### Important constraint
+
+Same backend.
+No duplicated logic.
+
+---
+
+# Phase 3 — Plan Generation Layer (intelligence)
+
+Now you add actual “fitness logic”.
+
+### Deliverables
+
+* Diet generation prompt
+* Workout generation prompt
+
+### What to enforce
+
+#### Diet
+
+AI must ask:
+
+* allergies
+* preferences
+* budget
+* goal
+
+#### Workout
+
+AI must ask:
+
+* available days
+* session duration
+* equipment
+* injuries
+
+Output → STRICT schema only
+
+No markdown. No prose.
+
+---
+
+# Phase 4 — Calendar Automation
+
+Now you add real-world action.
+
+### Deliverables
+
+* `schedule_events` implementation
+
+### Integration target
+
+* Google Calendar
+
+### Behavior
+
+User:
+
+> schedule for a month
+
+AI:
+
+* expands schedule
+* calls tool
+* creates recurring events
+
+---
+
+# Phase 5 — Human-Readable Layer (critical for adoption)
+
+You translate structured data → usable format.
+
+### Deliverables
+
+* `export_report`
+* Sheet sync
+
+### Integration
+
+* Google Sheets
+* optionally Google Docs
+
+### Structure example
+
+Sheet tabs:
+
+* Profile
+* Diet Plan
+* Workout Plan
+* Progress Log
+
+This is where your “traditional → modern transition” idea becomes real.
+
+---
+
+# Phase 6 — Gamification Engine (your retention core)
+
+Now you implement the “dopamine system”.
+
+### Deliverables
+
+* XP logic
+* streak logic
+* level system
+
+### Core mechanics
+
+* Completion → XP
+* Streak increments
+* Weekly bonus
+
+### AI behavior
+
+Every `log_completion` must return:
+
+* XP gained
+* streak
+* short reinforcement message
+
+Keep it tight. No fluff.
+
+---
+
+# Phase 7 — Cron / Automation Layer
+
+Now the system becomes proactive.
+
+### Deliverables
+
+* scheduled jobs
+
+### Examples
+
+#### Daily
+
+* check if workout logged
+* if not → trigger reminder
+
+#### Weekly
+
+* auto-generate report
+* suggest plan adjustment
+
+#### Monthly
+
+* regenerate plan
+
+---
+
+# Phase 8 — Input Normalization (advanced but essential)
+
+This is where your product becomes differentiated.
+
+### Goal
+
+User can dump messy notes like:
+
+> “i go gym sometimes monday maybe 6pm, i like chicken, hate fish”
+
+System:
+
+* parses
+* restructures
+* updates schema cleanly
+
+### Deliverable
+
+Robust `normalize_user_input`
+
+---
+
+# Phase 9 — Permission Modes (auto vs confirm)
+
+You said:
+
+> auto but some users might need confirmation
+
+Implement:
+
+```json id="zv8o7g"
+{
+  "mode": "auto" | "confirm"
+}
+```
+
+### Behavior
+
+* auto → directly call tools
+* confirm → AI asks before actions
+
+---
+
+# Phase 10 — Packaging (this is what users “install”)
+
+You don’t ship code directly.
+
+You ship:
+
+### 1. ChatGPT version
+
+* Custom GPT with:
+
+  * system prompt
+  * actions (API)
+
+### 2. Claude version
+
+* MCP config
+
+### 3. Optional
+
+* local runner (Node/Python)
+
+---
+
+# Final Structure (what you end up with)
+
+You now have:
+
+* One schema
+* One backend
+* One tool layer
+* Two AI entry points
+* Multiple integrations
+
+---
+
+# Where to focus effort (priority order)
+
+1. Schema (if this is weak, everything breaks)
+2. Tool contracts
+3. Normalization
+4. AI prompts
+5. Calendar + Sheets
+6. Gamification
+
+---
+
+# What to do next
+
+If you want to move forward properly, next step should be:
+
+* I define:
+
+  * exact **schema (final version)**
+  * exact **OpenAPI spec**
+  * exact **MCP tool definitions**
+  * production-ready **prompt templates**
+
+Say “next step” and I’ll produce those with no ambiguity.
