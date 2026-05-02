@@ -5,6 +5,11 @@ import logCompletionRouter from "./logCompletion";
 import normalizeRouter from "./normalize";
 import mcpRouter from "./mcp";
 import openapiRouter from "./openapi";
+import generatePlanRouter from "./generatePlan";
+import scheduleEventsRouter from "./scheduleEvents";
+import exportRouter from "./export";
+import systemPromptRouter from "./systemPrompt";
+import progressRouter from "./progress";
 
 const router: IRouter = Router();
 
@@ -14,5 +19,10 @@ router.use(logCompletionRouter);
 router.use(normalizeRouter);
 router.use(mcpRouter);
 router.use(openapiRouter);
+router.use(generatePlanRouter);
+router.use(scheduleEventsRouter);
+router.use(exportRouter);
+router.use(systemPromptRouter);
+router.use(progressRouter);
 
 export default router;

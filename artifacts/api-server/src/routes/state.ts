@@ -8,12 +8,11 @@ import {
   progress,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { computeLevel, xpToNextLevel } from "../lib/gamification";
 
 const router: IRouter = Router();
 
-router.get("/state/:userId", async (req, res) => {
-  const { userId } = req.params;
-
+async function buildState(userId: string) {
   const [profile, dietPlan, workoutPlan, schedule, prog] = await Promise.all([
     db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null),
     db.select().from(dietPlans).where(eq(dietPlans.userId, userId)).then((r) => r[0] ?? null),
@@ -22,16 +21,11 @@ router.get("/state/:userId", async (req, res) => {
     db.select().from(progress).where(eq(progress.userId, userId)).then((r) => r[0] ?? null),
   ]);
 
-  if (!profile) {
-    res.status(404).json({ error: `No state found for user '${userId}'` });
-    return;
-  }
-
   const xp = prog?.xp ?? 0;
-  const level = prog?.level ?? 1;
-  const xpToNextLevel = 500 - (xp % 500);
+  const level = computeLevel(xp);
+  const nextLevelXp = xpToNextLevel(xp);
 
-  res.json({
+  return {
     profile: profile
       ? {
           userId: profile.userId,
@@ -51,35 +45,37 @@ router.get("/state/:userId", async (req, res) => {
         }
       : null,
     dietPlan: dietPlan
-      ? {
-          meals: dietPlan.meals,
-          dailyCalories: dietPlan.dailyCalories,
-          macros: dietPlan.macros,
-          notes: dietPlan.notes,
-        }
+      ? { meals: dietPlan.meals, dailyCalories: dietPlan.dailyCalories, macros: dietPlan.macros, notes: dietPlan.notes }
       : null,
     workoutPlan: workoutPlan
-      ? {
-          sessions: workoutPlan.sessions,
-          notes: workoutPlan.notes,
-        }
+      ? { sessions: workoutPlan.sessions, notes: workoutPlan.notes }
       : null,
-    schedule: schedule
-      ? {
-          events: schedule.events,
-        }
-      : null,
+    schedule: schedule ? { events: schedule.events } : null,
     progress: prog
       ? {
           xp: prog.xp,
           streak: prog.streak,
           level,
           history: prog.history,
+          achievements: prog.achievements ?? [],
+          reminders: (prog.reminders ?? []).filter((r: { read: boolean }) => !r.read),
           lastLoggedAt: prog.lastLoggedAt?.toISOString() ?? null,
-          xpToNextLevel,
+          xpToNextLevel: nextLevelXp,
         }
       : null,
-  });
+  };
+}
+
+router.get("/state/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const state = await buildState(userId);
+
+  if (!state.profile) {
+    res.status(404).json({ error: `No state found for user '${userId}'` });
+    return;
+  }
+
+  res.json(state);
 });
 
 router.put("/state/:userId", async (req, res) => {
@@ -149,13 +145,7 @@ router.put("/state/:userId", async (req, res) => {
       })
       .onConflictDoUpdate({
         target: dietPlans.userId,
-        set: {
-          meals: d.meals,
-          dailyCalories: d.dailyCalories as number,
-          macros: d.macros,
-          notes: d.notes as string | undefined,
-          updatedAt: now,
-        },
+        set: { meals: d.meals, dailyCalories: d.dailyCalories as number, macros: d.macros, notes: d.notes as string | undefined, updatedAt: now },
       });
   }
 
@@ -163,19 +153,10 @@ router.put("/state/:userId", async (req, res) => {
     const w = body.workoutPlan;
     await db
       .insert(workoutPlans)
-      .values({
-        userId,
-        sessions: w.sessions,
-        notes: w.notes as string | undefined,
-        updatedAt: now,
-      })
+      .values({ userId, sessions: w.sessions, notes: w.notes as string | undefined, updatedAt: now })
       .onConflictDoUpdate({
         target: workoutPlans.userId,
-        set: {
-          sessions: w.sessions,
-          notes: w.notes as string | undefined,
-          updatedAt: now,
-        },
+        set: { sessions: w.sessions, notes: w.notes as string | undefined, updatedAt: now },
       });
   }
 
@@ -183,69 +164,14 @@ router.put("/state/:userId", async (req, res) => {
     const s = body.schedule;
     await db
       .insert(schedules)
-      .values({
-        userId,
-        events: s.events,
-        updatedAt: now,
-      })
+      .values({ userId, events: s.events, updatedAt: now })
       .onConflictDoUpdate({
         target: schedules.userId,
-        set: {
-          events: s.events,
-          updatedAt: now,
-        },
+        set: { events: s.events, updatedAt: now },
       });
   }
 
-  const [profile, dietPlan, workoutPlan, schedule, prog] = await Promise.all([
-    db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null),
-    db.select().from(dietPlans).where(eq(dietPlans.userId, userId)).then((r) => r[0] ?? null),
-    db.select().from(workoutPlans).where(eq(workoutPlans.userId, userId)).then((r) => r[0] ?? null),
-    db.select().from(schedules).where(eq(schedules.userId, userId)).then((r) => r[0] ?? null),
-    db.select().from(progress).where(eq(progress.userId, userId)).then((r) => r[0] ?? null),
-  ]);
-
-  const xp = prog?.xp ?? 0;
-  const level = prog?.level ?? 1;
-  const xpToNextLevel = 500 - (xp % 500);
-
-  res.json({
-    profile: profile
-      ? {
-          userId: profile.userId,
-          name: profile.name,
-          age: profile.age,
-          weightKg: profile.weightKg ? Number(profile.weightKg) : null,
-          heightCm: profile.heightCm ? Number(profile.heightCm) : null,
-          goal: profile.goal,
-          allergies: profile.allergies,
-          preferences: profile.preferences,
-          budgetPerWeek: profile.budgetPerWeek ? Number(profile.budgetPerWeek) : null,
-          availableDays: profile.availableDays,
-          sessionDurationMin: profile.sessionDurationMin,
-          equipment: profile.equipment,
-          injuries: profile.injuries,
-          mode: profile.mode,
-        }
-      : null,
-    dietPlan: dietPlan
-      ? { meals: dietPlan.meals, dailyCalories: dietPlan.dailyCalories, macros: dietPlan.macros, notes: dietPlan.notes }
-      : null,
-    workoutPlan: workoutPlan
-      ? { sessions: workoutPlan.sessions, notes: workoutPlan.notes }
-      : null,
-    schedule: schedule ? { events: schedule.events } : null,
-    progress: prog
-      ? {
-          xp: prog.xp,
-          streak: prog.streak,
-          level,
-          history: prog.history,
-          lastLoggedAt: prog.lastLoggedAt?.toISOString() ?? null,
-          xpToNextLevel,
-        }
-      : null,
-  });
+  res.json(await buildState(userId));
 });
 
 export default router;

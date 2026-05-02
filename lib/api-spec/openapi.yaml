@@ -27,7 +27,6 @@ paths:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -41,16 +40,12 @@ paths:
       operationId: getState
       tags: [state]
       summary: Get full state for a user
-      description: |
-        Returns the complete fitness state for a user: profile, diet plan,
-        workout plan, schedule, and progress.
       parameters:
         - name: userId
           in: path
           required: true
           schema:
             type: string
-          description: Unique user identifier
       responses:
         "200":
           description: Full fitness state
@@ -68,17 +63,12 @@ paths:
       operationId: saveState
       tags: [state]
       summary: Save or update user fitness state
-      description: |
-        Upserts the fitness state for a user. You can update the entire state
-        or only specific sections (profile, dietPlan, workoutPlan, schedule).
-        Omitted sections are left unchanged.
       parameters:
         - name: userId
           in: path
           required: true
           schema:
             type: string
-          description: Unique user identifier
       requestBody:
         required: true
         content:
@@ -99,14 +89,8 @@ paths:
       tags: [tools]
       summary: Log a workout or diet completion event
       description: |
-        Records that the user completed a workout session or followed their
-        diet plan. Awards XP, updates streak, and returns gamification feedback.
-        
-        XP rules:
-        - Workout completion: 50 XP base
-        - Diet completion: 30 XP base
-        - Streak bonus: +10 XP per day of active streak
-        - Level up at every 500 XP
+        Awards XP, updates streak, checks for new achievements, and returns gamification feedback.
+        XP rules: workout=50, diet=30, streak bonus=+10/day (max 10 days), weekly bonus=+100 if 5+ days/week, level up every 500 XP.
       requestBody:
         required: true
         content:
@@ -127,11 +111,8 @@ paths:
       tags: [tools]
       summary: Normalize messy user input into structured fitness data
       description: |
-        Takes raw, unstructured user text (e.g. "i go gym monday maybe 6pm,
-        i like chicken, hate fish") and uses AI to extract and return a
-        structured fitness profile patch. The AI figures out what fields
-        can be inferred and returns only those — you can then pass the result
-        to save_state.
+        Takes raw user text and uses AI to extract a structured fitness profile patch.
+        Pass the result to save_state to persist it.
       requestBody:
         required: true
         content:
@@ -146,22 +127,166 @@ paths:
               schema:
                 $ref: "#/components/schemas/NormalizeResponse"
 
+  /generate-plan:
+    post:
+      operationId: generatePlan
+      tags: [tools]
+      summary: AI-generate a diet or workout plan based on user profile
+      description: |
+        Reads the user's stored profile and uses AI to generate a structured plan.
+        In confirm mode, returns a preview without saving — call again with confirmed:true to save.
+        Requires the user's profile to already exist (call save_state first).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratePlanRequest"
+      responses:
+        "200":
+          description: Generated plan (saved or preview depending on mode)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratePlanResponse"
+
+  /schedule-events:
+    post:
+      operationId: scheduleEvents
+      tags: [tools]
+      summary: Generate and save calendar events for the user's fitness plan
+      description: |
+        Uses AI to expand a description (e.g. "schedule workouts for a month") into structured calendar events
+        based on the user's workout plan and available days.
+        In confirm mode, returns a preview without saving — call again with confirmed:true to save.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleEventsRequest"
+      responses:
+        "200":
+          description: Generated events (saved or preview depending on mode)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleEventsResponse"
+    delete:
+      operationId: clearSchedule
+      tags: [tools]
+      summary: Clear all scheduled events for a user
+      parameters:
+        - name: userId
+          in: path
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Schedule cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /export/{userId}:
+    get:
+      operationId: exportReport
+      tags: [tools]
+      summary: Export a full fitness progress report
+      description: |
+        Returns a formatted report with profile, progress, achievements, history, diet plan, and workout plan.
+        Supports json (default), csv, and html formats.
+        The html format is suitable for sharing or printing.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv, html]
+            default: json
+      responses:
+        "200":
+          description: Report in requested format
+          content:
+            application/json:
+              schema:
+                type: object
+            text/csv:
+              schema:
+                type: string
+            text/html:
+              schema:
+                type: string
+
+  /progress/{userId}/reminders/read:
+    patch:
+      operationId: markRemindersRead
+      tags: [tools]
+      summary: Mark reminders as read
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Reminder IDs to mark as read. Omit to mark all as read.
+      responses:
+        "200":
+          description: Reminders marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /system-prompt:
+    get:
+      operationId: getSystemPrompt
+      tags: [tools]
+      summary: Get recommended system prompts and integration config for ChatGPT and Claude
+      responses:
+        "200":
+          description: System prompts and integration configuration
+          content:
+            application/json:
+              schema:
+                type: object
+
   /mcp:
     post:
       operationId: mcpEndpoint
       tags: [mcp]
       summary: MCP server endpoint for Claude integration
       description: |
-        Model Context Protocol (MCP) JSON-RPC endpoint. Connect Claude Desktop
-        or any MCP client to this URL to get access to all fitness agent tools:
-        get_state, save_state, log_completion, normalize_user_input.
+        Model Context Protocol (MCP) JSON-RPC endpoint. All fitness tools are exposed here.
+        Requires Accept header to include both application/json and text/event-stream.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: MCP JSON-RPC request
       responses:
         "200":
           description: MCP JSON-RPC response
@@ -177,20 +302,17 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-      required:
-        - error
+      required: [error]
 
     UserProfile:
       type: object
-      description: User's personal data and fitness preferences
       properties:
         userId:
           type: string
@@ -223,7 +345,6 @@ components:
           type: array
           items:
             type: string
-            enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
         sessionDurationMin:
           type: integer
           nullable: true
@@ -238,16 +359,7 @@ components:
         mode:
           type: string
           enum: [auto, confirm]
-      required:
-        - userId
-        - name
-        - goal
-        - allergies
-        - preferences
-        - availableDays
-        - equipment
-        - injuries
-        - mode
+      required: [userId, name, goal, allergies, preferences, availableDays, equipment, injuries, mode]
 
     Meal:
       type: object
@@ -268,13 +380,7 @@ components:
           type: array
           items:
             type: string
-      required:
-        - name
-        - calories
-        - protein
-        - carbs
-        - fat
-        - ingredients
+      required: [name, calories, protein, carbs, fat, ingredients]
 
     Macros:
       type: object
@@ -285,10 +391,7 @@ components:
           type: number
         fatG:
           type: number
-      required:
-        - proteinG
-        - carbsG
-        - fatG
+      required: [proteinG, carbsG, fatG]
 
     DietPlan:
       type: object
@@ -304,17 +407,13 @@ components:
         notes:
           type: string
           nullable: true
-      required:
-        - meals
-        - dailyCalories
-        - macros
+      required: [meals, dailyCalories, macros]
 
     WorkoutSession:
       type: object
       properties:
         day:
           type: string
-          enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
         name:
           type: string
         durationMin:
@@ -332,13 +431,8 @@ components:
                 type: integer
               restSec:
                 type: integer
-            required:
-              - name
-      required:
-        - day
-        - name
-        - durationMin
-        - exercises
+            required: [name]
+      required: [day, name, durationMin, exercises]
 
     WorkoutPlan:
       type: object
@@ -350,8 +444,7 @@ components:
         notes:
           type: string
           nullable: true
-      required:
-        - sessions
+      required: [sessions]
 
     ScheduleEvent:
       type: object
@@ -368,10 +461,7 @@ components:
           enum: [workout, meal, check_in]
         durationMin:
           type: integer
-      required:
-        - title
-        - date
-        - type
+      required: [title, date, type]
 
     Schedule:
       type: object
@@ -380,8 +470,40 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScheduleEvent"
-      required:
-        - events
+      required: [events]
+
+    Achievement:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        earnedAt:
+          type: string
+          format: date-time
+        xpBonus:
+          type: integer
+      required: [id, name, description, earnedAt, xpBonus]
+
+    Reminder:
+      type: object
+      properties:
+        id:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [missed_workout, missed_diet, weekly_report, plan_renewal]
+        createdAt:
+          type: string
+          format: date-time
+        read:
+          type: boolean
+      required: [id, message, type, createdAt, read]
 
     CompletionEvent:
       type: object
@@ -397,10 +519,7 @@ components:
         notes:
           type: string
           nullable: true
-      required:
-        - type
-        - completedAt
-        - xpGained
+      required: [type, completedAt, xpGained]
 
     Progress:
       type: object
@@ -415,51 +534,52 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CompletionEvent"
+        achievements:
+          type: array
+          items:
+            $ref: "#/components/schemas/Achievement"
+        reminders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reminder"
         lastLoggedAt:
           type: string
           format: date-time
           nullable: true
         xpToNextLevel:
           type: integer
-      required:
-        - xp
-        - streak
-        - level
-        - history
+      required: [xp, streak, level, history, achievements, reminders]
 
     FitnessState:
       type: object
-      description: Complete fitness state for a user
       properties:
         profile:
-          $ref: "#/components/schemas/UserProfile"
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/UserProfile"
         dietPlan:
-          $ref: "#/components/schemas/DietPlan"
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/DietPlan"
         workoutPlan:
-          $ref: "#/components/schemas/WorkoutPlan"
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/WorkoutPlan"
         schedule:
-          $ref: "#/components/schemas/Schedule"
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Schedule"
         progress:
-          $ref: "#/components/schemas/Progress"
           nullable: true
-      required:
-        - profile
-        - dietPlan
-        - workoutPlan
-        - schedule
-        - progress
+          allOf:
+            - $ref: "#/components/schemas/Progress"
+      required: [profile, dietPlan, workoutPlan, schedule, progress]
 
     SaveStateRequest:
       type: object
-      description: Partial fitness state update — only include sections you want to change
       properties:
         profile:
           type: object
-          description: User profile fields to upsert (all optional)
           properties:
             name:
               type: string
@@ -517,9 +637,7 @@ components:
         notes:
           type: string
           nullable: true
-      required:
-        - userId
-        - type
+      required: [userId, type]
 
     LogCompletionResponse:
       type: object
@@ -538,28 +656,32 @@ components:
           type: integer
         message:
           type: string
-      required:
-        - xpGained
-        - totalXp
-        - streak
-        - level
-        - leveledUp
-        - xpToNextLevel
-        - message
+        newAchievements:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+              xpBonus:
+                type: integer
+        reminders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reminder"
+      required: [xpGained, totalXp, streak, level, leveledUp, xpToNextLevel, message]
 
     NormalizeRequest:
       type: object
       properties:
         input:
           type: string
-          description: Raw, unstructured user text about their fitness preferences
         userId:
           type: string
-          description: |
-            Optional — if provided, existing profile is used as context
-            for smarter extraction
-      required:
-        - input
+      required: [input]
 
     NormalizeResponse:
       type: object
@@ -573,8 +695,79 @@ components:
           enum: [high, medium, low]
         notes:
           type: string
-          description: AI explanation of what was and wasn't extractable
-      required:
-        - extracted
-        - rawInput
-        - confidence
+      required: [extracted, rawInput, confidence]
+
+    GeneratePlanRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+        type:
+          type: string
+          enum: [diet, workout]
+        confirmed:
+          type: boolean
+          description: Set to true to save when user is in confirm mode
+      required: [userId, type]
+
+    GeneratePlanResponse:
+      type: object
+      properties:
+        plan:
+          type: object
+          description: The generated diet or workout plan
+        saved:
+          type: boolean
+        requiresConfirmation:
+          type: boolean
+          nullable: true
+        message:
+          type: string
+          nullable: true
+      required: [plan, saved]
+
+    ScheduleEventsRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+        description:
+          type: string
+          description: Natural language description (e.g. "schedule workouts for next month")
+        startDate:
+          type: string
+          format: date
+          description: Start date (defaults to today)
+        durationDays:
+          type: integer
+          description: Number of days to schedule (default 30)
+        confirmed:
+          type: boolean
+          description: Set to true to save when user is in confirm mode
+        eventType:
+          type: string
+          enum: [workout, meal, both]
+      required: [userId]
+
+    ScheduleEventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleEvent"
+        count:
+          type: integer
+        saved:
+          type: boolean
+        startDate:
+          type: string
+        durationDays:
+          type: integer
+        requiresConfirmation:
+          type: boolean
+          nullable: true
+        message:
+          type: string
+          nullable: true
+      required: [events, count, saved, startDate, durationDays]

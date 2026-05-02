@@ -82,6 +82,14 @@ export const progress = pgTable("progress", {
     .$type<CompletionEvent[]>()
     .default(sql`'[]'::jsonb`)
     .notNull(),
+  achievements: jsonb("achievements")
+    .$type<Achievement[]>()
+    .default(sql`'[]'::jsonb`)
+    .notNull(),
+  reminders: jsonb("reminders")
+    .$type<Reminder[]>()
+    .default(sql`'[]'::jsonb`)
+    .notNull(),
   lastLoggedAt: timestamp("last_logged_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -92,4 +100,20 @@ export type CompletionEvent = {
   completedAt: string;
   xpGained: number;
   notes?: string;
+};
+
+export type Achievement = {
+  id: string;
+  name: string;
+  description: string;
+  earnedAt: string;
+  xpBonus: number;
+};
+
+export type Reminder = {
+  id: string;
+  message: string;
+  type: "missed_workout" | "missed_diet" | "weekly_report" | "plan_renewal";
+  createdAt: string;
+  read: boolean;
 };
