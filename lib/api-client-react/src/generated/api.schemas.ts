@@ -28,19 +28,6 @@ export const UserProfileGoal = {
   improve_endurance: "improve_endurance",
 } as const;
 
-export type UserProfileAvailableDaysItem =
-  (typeof UserProfileAvailableDaysItem)[keyof typeof UserProfileAvailableDaysItem];
-
-export const UserProfileAvailableDaysItem = {
-  monday: "monday",
-  tuesday: "tuesday",
-  wednesday: "wednesday",
-  thursday: "thursday",
-  friday: "friday",
-  saturday: "saturday",
-  sunday: "sunday",
-} as const;
-
 export type UserProfileMode =
   (typeof UserProfileMode)[keyof typeof UserProfileMode];
 
@@ -49,9 +36,6 @@ export const UserProfileMode = {
   confirm: "confirm",
 } as const;
 
-/**
- * User's personal data and fitness preferences
- */
 export interface UserProfile {
   userId: string;
   name: string;
@@ -62,7 +46,7 @@ export interface UserProfile {
   allergies: string[];
   preferences: string[];
   budgetPerWeek?: number | null;
-  availableDays: UserProfileAvailableDaysItem[];
+  availableDays: string[];
   sessionDurationMin?: number | null;
   equipment: string[];
   injuries: string[];
@@ -92,19 +76,6 @@ export interface DietPlan {
   notes?: string | null;
 }
 
-export type WorkoutSessionDay =
-  (typeof WorkoutSessionDay)[keyof typeof WorkoutSessionDay];
-
-export const WorkoutSessionDay = {
-  monday: "monday",
-  tuesday: "tuesday",
-  wednesday: "wednesday",
-  thursday: "thursday",
-  friday: "friday",
-  saturday: "saturday",
-  sunday: "sunday",
-} as const;
-
 export type WorkoutSessionExercisesItem = {
   name: string;
   sets?: number;
@@ -113,7 +84,7 @@ export type WorkoutSessionExercisesItem = {
 };
 
 export interface WorkoutSession {
-  day: WorkoutSessionDay;
+  day: string;
   name: string;
   durationMin: number;
   exercises: WorkoutSessionExercisesItem[];
@@ -145,6 +116,31 @@ export interface Schedule {
   events: ScheduleEvent[];
 }
 
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  earnedAt: string;
+  xpBonus: number;
+}
+
+export type ReminderType = (typeof ReminderType)[keyof typeof ReminderType];
+
+export const ReminderType = {
+  missed_workout: "missed_workout",
+  missed_diet: "missed_diet",
+  weekly_report: "weekly_report",
+  plan_renewal: "plan_renewal",
+} as const;
+
+export interface Reminder {
+  id: string;
+  message: string;
+  type: ReminderType;
+  createdAt: string;
+  read: boolean;
+}
+
 export type CompletionEventType =
   (typeof CompletionEventType)[keyof typeof CompletionEventType];
 
@@ -165,13 +161,12 @@ export interface Progress {
   streak: number;
   level: number;
   history: CompletionEvent[];
+  achievements: Achievement[];
+  reminders: Reminder[];
   lastLoggedAt?: string | null;
   xpToNextLevel?: number;
 }
 
-/**
- * Complete fitness state for a user
- */
 export interface FitnessState {
   profile: UserProfile | null;
   dietPlan: DietPlan | null;
@@ -198,9 +193,6 @@ export const SaveStateRequestProfileMode = {
   confirm: "confirm",
 } as const;
 
-/**
- * User profile fields to upsert (all optional)
- */
 export type SaveStateRequestProfile = {
   name?: string;
   age?: number;
@@ -217,11 +209,7 @@ export type SaveStateRequestProfile = {
   mode?: SaveStateRequestProfileMode;
 };
 
-/**
- * Partial fitness state update — only include sections you want to change
- */
 export interface SaveStateRequest {
-  /** User profile fields to upsert (all optional) */
   profile?: SaveStateRequestProfile;
   dietPlan?: DietPlan;
   workoutPlan?: WorkoutPlan;
@@ -242,6 +230,12 @@ export interface LogCompletionRequest {
   notes?: string | null;
 }
 
+export type LogCompletionResponseNewAchievementsItem = {
+  name?: string;
+  description?: string;
+  xpBonus?: number;
+};
+
 export interface LogCompletionResponse {
   xpGained: number;
   totalXp: number;
@@ -250,14 +244,12 @@ export interface LogCompletionResponse {
   leveledUp: boolean;
   xpToNextLevel: number;
   message: string;
+  newAchievements?: LogCompletionResponseNewAchievementsItem[] | null;
+  reminders?: Reminder[];
 }
 
 export interface NormalizeRequest {
-  /** Raw, unstructured user text about their fitness preferences */
   input: string;
-  /** Optional — if provided, existing profile is used as context
-for smarter extraction
- */
   userId?: string;
 }
 
@@ -274,13 +266,315 @@ export interface NormalizeResponse {
   extracted: SaveStateRequest;
   rawInput: string;
   confidence: NormalizeResponseConfidence;
-  /** AI explanation of what was and wasn't extractable */
   notes?: string;
 }
 
+export type GeneratePlanRequestType =
+  (typeof GeneratePlanRequestType)[keyof typeof GeneratePlanRequestType];
+
+export const GeneratePlanRequestType = {
+  diet: "diet",
+  workout: "workout",
+} as const;
+
+export interface GeneratePlanRequest {
+  userId: string;
+  type: GeneratePlanRequestType;
+  /** Set to true to save when user is in confirm mode */
+  confirmed?: boolean;
+}
+
 /**
- * MCP JSON-RPC request
+ * The generated diet or workout plan
  */
+export type GeneratePlanResponsePlan = { [key: string]: unknown };
+
+export interface GeneratePlanResponse {
+  /** The generated diet or workout plan */
+  plan: GeneratePlanResponsePlan;
+  saved: boolean;
+  requiresConfirmation?: boolean | null;
+  message?: string | null;
+}
+
+export type ScheduleEventsRequestEventType =
+  (typeof ScheduleEventsRequestEventType)[keyof typeof ScheduleEventsRequestEventType];
+
+export const ScheduleEventsRequestEventType = {
+  workout: "workout",
+  meal: "meal",
+  both: "both",
+} as const;
+
+export interface ScheduleEventsRequest {
+  userId: string;
+  /** Natural language description (e.g. "schedule workouts for next month") */
+  description?: string;
+  /** Start date (defaults to today) */
+  startDate?: string;
+  /** Number of days to schedule (default 30) */
+  durationDays?: number;
+  /** Set to true to save when user is in confirm mode */
+  confirmed?: boolean;
+  eventType?: ScheduleEventsRequestEventType;
+}
+
+export interface ScheduleEventsResponse {
+  events: ScheduleEvent[];
+  count: number;
+  saved: boolean;
+  startDate: string;
+  durationDays: number;
+  requiresConfirmation?: boolean | null;
+  message?: string | null;
+}
+
+export interface HistoryPagination {
+  /** Current page number */
+  page: number;
+  /** Items per page */
+  limit: number;
+  /** Total entries after any type filter */
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface HistorySummary {
+  /** Lifetime total workout completions (unfiltered) */
+  workoutLogs: number;
+  /** Lifetime total diet completions (unfiltered) */
+  dietLogs: number;
+  /** workoutLogs + dietLogs */
+  totalLogs: number;
+  /** Total matching the current type filter (equals total when no filter) */
+  filteredTotal: number;
+}
+
+export interface HistoryResponse {
+  userId: string;
+  history: CompletionEvent[];
+  pagination: HistoryPagination;
+  summary: HistorySummary;
+}
+
+export type ExportReportProfileMode =
+  (typeof ExportReportProfileMode)[keyof typeof ExportReportProfileMode];
+
+export const ExportReportProfileMode = {
+  auto: "auto",
+  confirm: "confirm",
+} as const;
+
+export interface ExportReportProfile {
+  name: string;
+  goal: string;
+  age?: number | null;
+  weightKg?: number | null;
+  mode: ExportReportProfileMode;
+}
+
+export interface ExportReportProgress {
+  xp: number;
+  streak: number;
+  level: number;
+  xpToNextLevel: number;
+  workoutLogs: number;
+  dietLogs: number;
+  totalLogs: number;
+}
+
+export type ExportReportResponseAchievementsItem = {
+  name: string;
+  description: string;
+  earnedAt: string;
+};
+
+export type ExportReportResponseDietPlanMacros = { [key: string]: unknown };
+
+export type ExportReportResponseDietPlan = {
+  dailyCalories?: number;
+  macros?: ExportReportResponseDietPlanMacros;
+} | null;
+
+export type ExportReportResponseWorkoutPlan = {
+  sessionCount?: number;
+} | null;
+
+export type ExportReportResponseSchedule = {
+  eventCount?: number;
+} | null;
+
+/**
+ * JSON fitness report returned by GET /export/{userId}?format=json (the default).
+Also returned by csv and html formats wrapped in their respective content types.
+The `embedUrl` field is only present when format=html — use it to open the interactive
+paginated report inline; use `downloadUrl` to trigger a file download.
+
+ */
+export interface ExportReportResponse {
+  exportedAt: string;
+  userId: string;
+  profile: ExportReportProfile;
+  progress: ExportReportProgress;
+  achievements: ExportReportResponseAchievementsItem[];
+  dietPlan?: ExportReportResponseDietPlan;
+  workoutPlan?: ExportReportResponseWorkoutPlan;
+  schedule?: ExportReportResponseSchedule;
+  /** Last 10 completion events */
+  recentHistory: CompletionEvent[];
+  /** Relative URL that triggers a file download of this report */
+  downloadUrl: string;
+  /** Relative URL that serves the HTML report inline (no Content-Disposition header).
+Only present when format=html. Use this URL to embed the report in an iframe
+or open it directly in a browser tab.
+ */
+  embedUrl?: string | null;
+}
+
+/**
+ * Optional hint about what kind of data to extract. Defaults to auto-detect.
+ */
+export type IngestRequestTypeHint =
+  | (typeof IngestRequestTypeHint)[keyof typeof IngestRequestTypeHint]
+  | null;
+
+export const IngestRequestTypeHint = {
+  auto: "auto",
+  workout: "workout",
+  diet: "diet",
+  profile: "profile",
+  schedule: "schedule",
+} as const;
+
+export interface IngestRequest {
+  /** User ID to associate extracted data with. */
+  userId: string;
+  /** Raw text to extract fitness data from (workout description, diet notes, profile info, etc.) */
+  text?: string | null;
+  /** Base64-encoded image (JPEG, PNG, WebP). AI vision will extract fitness data from it. */
+  imageBase64?: string | null;
+  /** Publicly-accessible image URL. Alternative to imageBase64. */
+  imageUrl?: string | null;
+  /** Optional hint about what kind of data to extract. Defaults to auto-detect. */
+  typeHint?: IngestRequestTypeHint;
+  /** When false, returns extracted data without saving to the database (preview mode). */
+  save?: boolean;
+}
+
+/**
+ * What kind of data the AI detected in the input.
+ */
+export type IngestResponseDetectedType =
+  (typeof IngestResponseDetectedType)[keyof typeof IngestResponseDetectedType];
+
+export const IngestResponseDetectedType = {
+  workout: "workout",
+  diet: "diet",
+  profile: "profile",
+  schedule: "schedule",
+  mixed: "mixed",
+  unknown: "unknown",
+} as const;
+
+export type IngestResponseConfidence =
+  (typeof IngestResponseConfidence)[keyof typeof IngestResponseConfidence];
+
+export const IngestResponseConfidence = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
+export interface IngestResponse {
+  extracted: SaveStateRequest;
+  /** What kind of data the AI detected in the input. */
+  detectedType: IngestResponseDetectedType;
+  /** Whether the extracted data was saved to the database. */
+  saved: boolean;
+  /** Human-readable summary of what was extracted. */
+  summary: string;
+  confidence: IngestResponseConfidence;
+}
+
+export type ClearScheduleParams = {
+  userId?: string;
+};
+
+export type ClearSchedule200 = {
+  success?: boolean;
+};
+
+export type ExportReportParams = {
+  /**
+   * Output format. Defaults to json. Use markdown for Notion-compatible output.
+   */
+  format?: ExportReportFormat;
+  /**
+ * HTML format only. When true, omits the Content-Disposition attachment header so the report
+renders inline in a browser tab or iframe rather than triggering a file download.
+
+ */
+  embed?: boolean;
+};
+
+export type ExportReportFormat =
+  (typeof ExportReportFormat)[keyof typeof ExportReportFormat];
+
+export const ExportReportFormat = {
+  json: "json",
+  csv: "csv",
+  html: "html",
+  markdown: "markdown",
+} as const;
+
+export type GetHistoryParams = {
+  /**
+   * Page number (1-indexed). Clamped to totalPages if too high.
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * Entries per page (max 100, invalid values fall back to 20).
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * Filter history by completion type.
+   */
+  type?: GetHistoryType;
+  /**
+   * Sort order — desc returns newest first (default), asc returns oldest first.
+   */
+  sort?: GetHistorySort;
+};
+
+export type GetHistoryType =
+  (typeof GetHistoryType)[keyof typeof GetHistoryType];
+
+export const GetHistoryType = {
+  workout: "workout",
+  diet: "diet",
+} as const;
+
+export type GetHistorySort =
+  (typeof GetHistorySort)[keyof typeof GetHistorySort];
+
+export const GetHistorySort = {
+  asc: "asc",
+  desc: "desc",
+} as const;
+
+export type MarkRemindersReadBody = {
+  /** Reminder IDs to mark as read. Omit to mark all as read. */
+  ids?: string[];
+};
+
+export type MarkRemindersRead200 = { [key: string]: unknown };
+
+export type GetSystemPrompt200 = { [key: string]: unknown };
+
 export type McpEndpointBody = { [key: string]: unknown };
 
 export type McpEndpoint200 = { [key: string]: unknown };

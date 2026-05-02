@@ -10,13 +10,9 @@ Use userId to scope all state to a specific user. A simple string like
 
  * OpenAPI spec version: 1.0.0
  */
-import type { UserProfileAvailableDaysItem } from "./userProfileAvailableDaysItem";
 import type { UserProfileGoal } from "./userProfileGoal";
 import type { UserProfileMode } from "./userProfileMode";
 
-/**
- * User's personal data and fitness preferences
- */
 export interface UserProfile {
   userId: string;
   name: string;
@@ -27,7 +23,7 @@ export interface UserProfile {
   allergies: string[];
   preferences: string[];
   budgetPerWeek?: number | null;
-  availableDays: UserProfileAvailableDaysItem[];
+  availableDays: string[];
   sessionDurationMin?: number | null;
   equipment: string[];
   injuries: string[];

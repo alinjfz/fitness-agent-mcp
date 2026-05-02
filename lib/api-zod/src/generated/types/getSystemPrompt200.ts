@@ -11,15 +11,4 @@ Use userId to scope all state to a specific user. A simple string like
  * OpenAPI spec version: 1.0.0
  */
 
-export type UserProfileAvailableDaysItem =
-  (typeof UserProfileAvailableDaysItem)[keyof typeof UserProfileAvailableDaysItem];
-
-export const UserProfileAvailableDaysItem = {
-  monday: "monday",
-  tuesday: "tuesday",
-  wednesday: "wednesday",
-  thursday: "thursday",
-  friday: "friday",
-  saturday: "saturday",
-  sunday: "sunday",
-} as const;
+export type GetSystemPrompt200 = { [key: string]: unknown };

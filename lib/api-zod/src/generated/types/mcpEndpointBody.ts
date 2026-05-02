@@ -11,7 +11,4 @@ Use userId to scope all state to a specific user. A simple string like
  * OpenAPI spec version: 1.0.0
  */
 
-/**
- * MCP JSON-RPC request
- */
 export type McpEndpointBody = { [key: string]: unknown };

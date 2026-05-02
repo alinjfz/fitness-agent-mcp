@@ -16,9 +16,6 @@ import type { Schedule } from "./schedule";
 import type { UserProfile } from "./userProfile";
 import type { WorkoutPlan } from "./workoutPlan";
 
-/**
- * Complete fitness state for a user
- */
 export interface FitnessState {
   profile: UserProfile | null;
   dietPlan: DietPlan | null;

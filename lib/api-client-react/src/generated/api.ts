@@ -22,16 +22,31 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  ClearSchedule200,
+  ClearScheduleParams,
   ErrorResponse,
+  ExportReportParams,
+  ExportReportResponse,
   FitnessState,
+  GeneratePlanRequest,
+  GeneratePlanResponse,
+  GetHistoryParams,
+  GetSystemPrompt200,
   HealthStatus,
+  HistoryResponse,
+  IngestRequest,
+  IngestResponse,
   LogCompletionRequest,
   LogCompletionResponse,
+  MarkRemindersRead200,
+  MarkRemindersReadBody,
   McpEndpoint200,
   McpEndpointBody,
   NormalizeRequest,
   NormalizeResponse,
   SaveStateRequest,
+  ScheduleEventsRequest,
+  ScheduleEventsResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -44,7 +59,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -120,9 +134,6 @@ export function useHealthCheck<
 }
 
 /**
- * Returns the complete fitness state for a user: profile, diet plan,
-workout plan, schedule, and progress.
-
  * @summary Get full state for a user
  */
 export const getGetStateUrl = (userId: string) => {
@@ -208,10 +219,6 @@ export function useGetState<
 }
 
 /**
- * Upserts the fitness state for a user. You can update the entire state
-or only specific sections (profile, dietPlan, workoutPlan, schedule).
-Omitted sections are left unchanged.
-
  * @summary Save or update user fitness state
  */
 export const getSaveStateUrl = (userId: string) => {
@@ -299,14 +306,8 @@ export const useSaveState = <
 };
 
 /**
- * Records that the user completed a workout session or followed their
-diet plan. Awards XP, updates streak, and returns gamification feedback.
-
-XP rules:
-- Workout completion: 50 XP base
-- Diet completion: 30 XP base
-- Streak bonus: +10 XP per day of active streak
-- Level up at every 500 XP
+ * Awards XP, updates streak, checks for new achievements, and returns gamification feedback.
+XP rules: workout=50, diet=30, streak bonus=+10/day (max 10 days), weekly bonus=+100 if 5+ days/week, level up every 500 XP.
 
  * @summary Log a workout or diet completion event
  */
@@ -394,11 +395,8 @@ export const useLogCompletion = <
 };
 
 /**
- * Takes raw, unstructured user text (e.g. "i go gym monday maybe 6pm,
-i like chicken, hate fish") and uses AI to extract and return a
-structured fitness profile patch. The AI figures out what fields
-can be inferred and returns only those — you can then pass the result
-to save_state.
+ * Takes raw user text and uses AI to extract a structured fitness profile patch.
+Pass the result to save_state to persist it.
 
  * @summary Normalize messy user input into structured fitness data
  */
@@ -486,9 +484,771 @@ export const useNormalizeUserInput = <
 };
 
 /**
- * Model Context Protocol (MCP) JSON-RPC endpoint. Connect Claude Desktop
-or any MCP client to this URL to get access to all fitness agent tools:
-get_state, save_state, log_completion, normalize_user_input.
+ * Reads the user's stored profile and uses AI to generate a structured plan.
+In confirm mode, returns a preview without saving — call again with confirmed:true to save.
+Requires the user's profile to already exist (call save_state first).
+
+ * @summary AI-generate a diet or workout plan based on user profile
+ */
+export const getGeneratePlanUrl = () => {
+  return `/api/generate-plan`;
+};
+
+export const generatePlan = async (
+  generatePlanRequest: GeneratePlanRequest,
+  options?: RequestInit,
+): Promise<GeneratePlanResponse> => {
+  return customFetch<GeneratePlanResponse>(getGeneratePlanUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(generatePlanRequest),
+  });
+};
+
+export const getGeneratePlanMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generatePlan>>,
+    TError,
+    { data: BodyType<GeneratePlanRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generatePlan>>,
+  TError,
+  { data: BodyType<GeneratePlanRequest> },
+  TContext
+> => {
+  const mutationKey = ["generatePlan"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generatePlan>>,
+    { data: BodyType<GeneratePlanRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generatePlan(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GeneratePlanMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generatePlan>>
+>;
+export type GeneratePlanMutationBody = BodyType<GeneratePlanRequest>;
+export type GeneratePlanMutationError = ErrorType<unknown>;
+
+/**
+ * @summary AI-generate a diet or workout plan based on user profile
+ */
+export const useGeneratePlan = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generatePlan>>,
+    TError,
+    { data: BodyType<GeneratePlanRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generatePlan>>,
+  TError,
+  { data: BodyType<GeneratePlanRequest> },
+  TContext
+> => {
+  return useMutation(getGeneratePlanMutationOptions(options));
+};
+
+/**
+ * Uses AI to expand a description (e.g. "schedule workouts for a month") into structured calendar events
+based on the user's workout plan and available days.
+In confirm mode, returns a preview without saving — call again with confirmed:true to save.
+
+ * @summary Generate and save calendar events for the user's fitness plan
+ */
+export const getScheduleEventsUrl = () => {
+  return `/api/schedule-events`;
+};
+
+export const scheduleEvents = async (
+  scheduleEventsRequest: ScheduleEventsRequest,
+  options?: RequestInit,
+): Promise<ScheduleEventsResponse> => {
+  return customFetch<ScheduleEventsResponse>(getScheduleEventsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(scheduleEventsRequest),
+  });
+};
+
+export const getScheduleEventsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scheduleEvents>>,
+    TError,
+    { data: BodyType<ScheduleEventsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof scheduleEvents>>,
+  TError,
+  { data: BodyType<ScheduleEventsRequest> },
+  TContext
+> => {
+  const mutationKey = ["scheduleEvents"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof scheduleEvents>>,
+    { data: BodyType<ScheduleEventsRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return scheduleEvents(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ScheduleEventsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof scheduleEvents>>
+>;
+export type ScheduleEventsMutationBody = BodyType<ScheduleEventsRequest>;
+export type ScheduleEventsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Generate and save calendar events for the user's fitness plan
+ */
+export const useScheduleEvents = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scheduleEvents>>,
+    TError,
+    { data: BodyType<ScheduleEventsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof scheduleEvents>>,
+  TError,
+  { data: BodyType<ScheduleEventsRequest> },
+  TContext
+> => {
+  return useMutation(getScheduleEventsMutationOptions(options));
+};
+
+/**
+ * @summary Clear all scheduled events for a user
+ */
+export const getClearScheduleUrl = (params?: ClearScheduleParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/schedule-events?${stringifiedParams}`
+    : `/api/schedule-events`;
+};
+
+export const clearSchedule = async (
+  params?: ClearScheduleParams,
+  options?: RequestInit,
+): Promise<ClearSchedule200> => {
+  return customFetch<ClearSchedule200>(getClearScheduleUrl(params), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getClearScheduleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearSchedule>>,
+    TError,
+    { params?: ClearScheduleParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearSchedule>>,
+  TError,
+  { params?: ClearScheduleParams },
+  TContext
+> => {
+  const mutationKey = ["clearSchedule"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearSchedule>>,
+    { params?: ClearScheduleParams }
+  > = (props) => {
+    const { params } = props ?? {};
+
+    return clearSchedule(params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearScheduleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearSchedule>>
+>;
+
+export type ClearScheduleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Clear all scheduled events for a user
+ */
+export const useClearSchedule = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearSchedule>>,
+    TError,
+    { params?: ClearScheduleParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearSchedule>>,
+  TError,
+  { params?: ClearScheduleParams },
+  TContext
+> => {
+  return useMutation(getClearScheduleMutationOptions(options));
+};
+
+/**
+ * Returns a formatted report with profile, progress, achievements, history, diet plan, and workout plan.
+Supports json (default), csv, and html formats.
+
+The json response includes a `downloadUrl` for every format and, when `format=html`, an additional
+`embedUrl` with `embed=true` appended — use `embedUrl` to open the report inline in a browser or
+iframe, and `downloadUrl` to trigger a file download.
+
+Pass `embed=true` directly on an html request to strip the Content-Disposition header so the page
+loads inline instead of downloading.
+
+ * @summary Export a full fitness progress report
+ */
+export const getExportReportUrl = (
+  userId: string,
+  params?: ExportReportParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/export/${userId}?${stringifiedParams}`
+    : `/api/export/${userId}`;
+};
+
+export const exportReport = async (
+  userId: string,
+  params?: ExportReportParams,
+  options?: RequestInit,
+): Promise<ExportReportResponse | string> => {
+  return customFetch<ExportReportResponse | string>(
+    getExportReportUrl(userId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getExportReportQueryKey = (
+  userId: string,
+  params?: ExportReportParams,
+) => {
+  return [`/api/export/${userId}`, ...(params ? [params] : [])] as const;
+};
+
+export const getExportReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof exportReport>>,
+  TError = ErrorType<unknown>,
+>(
+  userId: string,
+  params?: ExportReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getExportReportQueryKey(userId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof exportReport>>> = ({
+    signal,
+  }) => exportReport(userId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!userId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof exportReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ExportReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof exportReport>>
+>;
+export type ExportReportQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Export a full fitness progress report
+ */
+
+export function useExportReport<
+  TData = Awaited<ReturnType<typeof exportReport>>,
+  TError = ErrorType<unknown>,
+>(
+  userId: string,
+  params?: ExportReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof exportReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getExportReportQueryOptions(userId, params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns the user's workout and diet completion history with full pagination support.
+Results are sorted newest-first by default. Supports filtering by event type and sort order.
+
+ * @summary Get paginated completion event history for a user
+ */
+export const getGetHistoryUrl = (userId: string, params?: GetHistoryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/progress/${userId}/history?${stringifiedParams}`
+    : `/api/progress/${userId}/history`;
+};
+
+export const getHistory = async (
+  userId: string,
+  params?: GetHistoryParams,
+  options?: RequestInit,
+): Promise<HistoryResponse> => {
+  return customFetch<HistoryResponse>(getGetHistoryUrl(userId, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetHistoryQueryKey = (
+  userId: string,
+  params?: GetHistoryParams,
+) => {
+  return [
+    `/api/progress/${userId}/history`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHistory>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  userId: string,
+  params?: GetHistoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetHistoryQueryKey(userId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistory>>> = ({
+    signal,
+  }) => getHistory(userId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!userId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHistory>>
+>;
+export type GetHistoryQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get paginated completion event history for a user
+ */
+
+export function useGetHistory<
+  TData = Awaited<ReturnType<typeof getHistory>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  userId: string,
+  params?: GetHistoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHistoryQueryOptions(userId, params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Mark reminders as read
+ */
+export const getMarkRemindersReadUrl = (userId: string) => {
+  return `/api/progress/${userId}/reminders/read`;
+};
+
+export const markRemindersRead = async (
+  userId: string,
+  markRemindersReadBody?: MarkRemindersReadBody,
+  options?: RequestInit,
+): Promise<MarkRemindersRead200> => {
+  return customFetch<MarkRemindersRead200>(getMarkRemindersReadUrl(userId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(markRemindersReadBody),
+  });
+};
+
+export const getMarkRemindersReadMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markRemindersRead>>,
+    TError,
+    { userId: string; data: BodyType<MarkRemindersReadBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof markRemindersRead>>,
+  TError,
+  { userId: string; data: BodyType<MarkRemindersReadBody> },
+  TContext
+> => {
+  const mutationKey = ["markRemindersRead"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof markRemindersRead>>,
+    { userId: string; data: BodyType<MarkRemindersReadBody> }
+  > = (props) => {
+    const { userId, data } = props ?? {};
+
+    return markRemindersRead(userId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MarkRemindersReadMutationResult = NonNullable<
+  Awaited<ReturnType<typeof markRemindersRead>>
+>;
+export type MarkRemindersReadMutationBody = BodyType<MarkRemindersReadBody>;
+export type MarkRemindersReadMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark reminders as read
+ */
+export const useMarkRemindersRead = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markRemindersRead>>,
+    TError,
+    { userId: string; data: BodyType<MarkRemindersReadBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof markRemindersRead>>,
+  TError,
+  { userId: string; data: BodyType<MarkRemindersReadBody> },
+  TContext
+> => {
+  return useMutation(getMarkRemindersReadMutationOptions(options));
+};
+
+/**
+ * @summary Get recommended system prompts and integration config for ChatGPT and Claude
+ */
+export const getGetSystemPromptUrl = () => {
+  return `/api/system-prompt`;
+};
+
+export const getSystemPrompt = async (
+  options?: RequestInit,
+): Promise<GetSystemPrompt200> => {
+  return customFetch<GetSystemPrompt200>(getGetSystemPromptUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSystemPromptQueryKey = () => {
+  return [`/api/system-prompt`] as const;
+};
+
+export const getGetSystemPromptQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSystemPrompt>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSystemPrompt>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSystemPromptQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSystemPrompt>>> = ({
+    signal,
+  }) => getSystemPrompt({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSystemPrompt>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSystemPromptQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSystemPrompt>>
+>;
+export type GetSystemPromptQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get recommended system prompts and integration config for ChatGPT and Claude
+ */
+
+export function useGetSystemPrompt<
+  TData = Awaited<ReturnType<typeof getSystemPrompt>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSystemPrompt>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSystemPromptQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Accepts plain text descriptions OR a base64-encoded image (photo of a workout plan,
+handwritten notes, diet menu, etc.). AI vision extracts structured fitness data, which
+is then saved to the user's profile. Set save=false to preview the extraction without
+persisting it.
+
+ * @summary Ingest a workout plan, diet, or profile from text or an image
+ */
+export const getIngestDataUrl = () => {
+  return `/api/ingest`;
+};
+
+export const ingestData = async (
+  ingestRequest: IngestRequest,
+  options?: RequestInit,
+): Promise<IngestResponse> => {
+  return customFetch<IngestResponse>(getIngestDataUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ingestRequest),
+  });
+};
+
+export const getIngestDataMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ingestData>>,
+    TError,
+    { data: BodyType<IngestRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof ingestData>>,
+  TError,
+  { data: BodyType<IngestRequest> },
+  TContext
+> => {
+  const mutationKey = ["ingestData"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof ingestData>>,
+    { data: BodyType<IngestRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return ingestData(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type IngestDataMutationResult = NonNullable<
+  Awaited<ReturnType<typeof ingestData>>
+>;
+export type IngestDataMutationBody = BodyType<IngestRequest>;
+export type IngestDataMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Ingest a workout plan, diet, or profile from text or an image
+ */
+export const useIngestData = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof ingestData>>,
+    TError,
+    { data: BodyType<IngestRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof ingestData>>,
+  TError,
+  { data: BodyType<IngestRequest> },
+  TContext
+> => {
+  return useMutation(getIngestDataMutationOptions(options));
+};
+
+/**
+ * Model Context Protocol (MCP) JSON-RPC endpoint. All fitness tools are exposed here.
+Requires Accept header to include both application/json and text/event-stream.
 
  * @summary MCP server endpoint for Claude integration
  */

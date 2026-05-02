@@ -13,9 +13,6 @@ Use userId to scope all state to a specific user. A simple string like
 import type { SaveStateRequestProfileGoal } from "./saveStateRequestProfileGoal";
 import type { SaveStateRequestProfileMode } from "./saveStateRequestProfileMode";
 
-/**
- * User profile fields to upsert (all optional)
- */
 export type SaveStateRequestProfile = {
   name?: string;
   age?: number;

@@ -10,13 +10,17 @@ Use userId to scope all state to a specific user. A simple string like
 
  * OpenAPI spec version: 1.0.0
  */
+import type { Achievement } from "./achievement";
 import type { CompletionEvent } from "./completionEvent";
+import type { Reminder } from "./reminder";
 
 export interface Progress {
   xp: number;
   streak: number;
   level: number;
   history: CompletionEvent[];
+  achievements: Achievement[];
+  reminders: Reminder[];
   lastLoggedAt?: Date | null;
   xpToNextLevel?: number;
 }

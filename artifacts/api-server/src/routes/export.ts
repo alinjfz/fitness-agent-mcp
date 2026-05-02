@@ -309,8 +309,95 @@ ${achievements.length > 0 ? `<h2>Achievements (${achievements.length})</h2>
 </html>`;
 
     res.send(html);
+  } else if (format === "markdown") {
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="fitness-report-${userId}-${reportDate}.md"`);
+
+    const goalLabel = (profile.goal as string).replace(/_/g, " ");
+    const streak = prog?.streak ?? 0;
+    const macros = dietPlan?.macros as { proteinG?: number; carbsG?: number; fatG?: number } | null;
+    const meals = (dietPlan?.meals ?? []) as Array<{ name: string; time?: string; calories: number; protein: number; carbs: number; fat: number }>;
+    const sessions = (workoutPlan?.sessions ?? []) as Array<{ day: string; name: string; durationMin: number; exercises: Array<{ name: string; sets?: number; reps?: number }> }>;
+
+    const lines: string[] = [
+      `# Fitness Report — ${profile.name}`,
+      ``,
+      `*Generated on ${reportDate} | Goal: ${goalLabel} | Level ${level}*`,
+      ``,
+      `---`,
+      ``,
+      `## Progress`,
+      ``,
+      `| Metric | Value |`,
+      `|--------|-------|`,
+      `| Total XP | ${xp.toLocaleString()} |`,
+      `| Level | ${level} |`,
+      `| Streak | ${streak} day${streak !== 1 ? "s" : ""} |`,
+      `| XP to Next Level | ${nextLevel} |`,
+      `| Workouts Logged | ${workoutLogs} |`,
+      `| Diet Sessions | ${dietLogs} |`,
+      `| Total Logs | ${workoutLogs + dietLogs} |`,
+      ``,
+    ];
+
+    if (achievements.length > 0) {
+      lines.push(`## Achievements (${achievements.length})`, ``);
+      lines.push(`| Achievement | Description | Earned | XP Bonus |`);
+      lines.push(`|-------------|-------------|--------|----------|`);
+      for (const a of achievements) {
+        lines.push(`| ${a.name} | ${a.description} | ${a.earnedAt.split("T")[0]} | +${a.xpBonus} XP |`);
+      }
+      lines.push(``);
+    }
+
+    if (history.length > 0) {
+      const recent = [...history].reverse().slice(0, 30);
+      lines.push(`## Recent Activity (last ${recent.length} entries)`, ``);
+      lines.push(`| Date | Type | XP Gained | Notes |`);
+      lines.push(`|------|------|-----------|-------|`);
+      for (const h of recent) {
+        lines.push(`| ${h.completedAt.split("T")[0]} | ${h.type} | +${h.xpGained} XP | ${h.notes ?? ""} |`);
+      }
+      lines.push(``);
+    }
+
+    if (workoutPlan && sessions.length > 0) {
+      lines.push(`## Workout Plan`, ``);
+      for (const s of sessions) {
+        lines.push(`### ${s.day.charAt(0).toUpperCase() + s.day.slice(1)} — ${s.name} (${s.durationMin} min)`, ``);
+        if (s.exercises.length > 0) {
+          lines.push(`| Exercise | Sets | Reps |`);
+          lines.push(`|----------|------|------|`);
+          for (const e of s.exercises) {
+            lines.push(`| ${e.name} | ${e.sets ?? "—"} | ${e.reps ?? "—"} |`);
+          }
+          lines.push(``);
+        }
+      }
+    }
+
+    if (dietPlan) {
+      lines.push(`## Diet Plan`, ``);
+      lines.push(`**Daily Calories:** ${dietPlan.dailyCalories} kcal`, ``);
+      if (macros) {
+        lines.push(`**Macros:** ${macros.proteinG ?? 0}g protein / ${macros.carbsG ?? 0}g carbs / ${macros.fatG ?? 0}g fat`, ``);
+      }
+      if (meals.length > 0) {
+        lines.push(`| Meal | Time | Calories | Protein | Carbs | Fat |`);
+        lines.push(`|------|------|----------|---------|-------|-----|`);
+        for (const m of meals) {
+          lines.push(`| ${m.name} | ${m.time ?? "—"} | ${m.calories} kcal | ${m.protein}g | ${m.carbs}g | ${m.fat}g |`);
+        }
+        lines.push(``);
+      }
+    }
+
+    lines.push(`---`);
+    lines.push(`*Exported from Fitness Agent Layer — ${new Date().toISOString()}*`);
+
+    res.send(lines.join("\n"));
   } else {
-    res.status(400).json({ error: "format must be json, csv, or html" });
+    res.status(400).json({ error: "format must be json, csv, html, or markdown" });
   }
 });
 

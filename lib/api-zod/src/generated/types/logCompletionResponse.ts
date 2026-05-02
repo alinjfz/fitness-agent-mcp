@@ -10,6 +10,8 @@ Use userId to scope all state to a specific user. A simple string like
 
  * OpenAPI spec version: 1.0.0
  */
+import type { LogCompletionResponseNewAchievementsItem } from "./logCompletionResponseNewAchievementsItem";
+import type { Reminder } from "./reminder";
 
 export interface LogCompletionResponse {
   xpGained: number;
@@ -19,4 +21,6 @@ export interface LogCompletionResponse {
   leveledUp: boolean;
   xpToNextLevel: number;
   message: string;
+  newAchievements?: LogCompletionResponseNewAchievementsItem[] | null;
+  reminders?: Reminder[];
 }

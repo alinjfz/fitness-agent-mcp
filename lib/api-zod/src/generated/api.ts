@@ -13,7 +13,6 @@ Use userId to scope all state to a specific user. A simple string like
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -21,147 +20,398 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Returns the complete fitness state for a user: profile, diet plan,
-workout plan, schedule, and progress.
-
  * @summary Get full state for a user
  */
 export const GetStateParams = zod.object({
-  userId: zod.coerce.string().describe("Unique user identifier"),
+  userId: zod.coerce.string(),
 });
 
-export const GetStateResponse = zod
-  .object({
-    profile: zod
-      .object({
-        userId: zod.string(),
-        name: zod.string(),
-        age: zod.number().nullish(),
-        weightKg: zod.number().nullish(),
-        heightCm: zod.number().nullish(),
-        goal: zod.enum([
-          "lose_weight",
-          "build_muscle",
-          "maintain",
-          "improve_endurance",
-        ]),
-        allergies: zod.array(zod.string()),
-        preferences: zod.array(zod.string()),
-        budgetPerWeek: zod.number().nullish(),
-        availableDays: zod.array(
-          zod.enum([
-            "monday",
-            "tuesday",
-            "wednesday",
-            "thursday",
-            "friday",
-            "saturday",
-            "sunday",
-          ]),
-        ),
-        sessionDurationMin: zod.number().nullish(),
-        equipment: zod.array(zod.string()),
-        injuries: zod.array(zod.string()),
-        mode: zod.enum(["auto", "confirm"]),
-      })
-      .nullable()
-      .describe("User's personal data and fitness preferences"),
-    dietPlan: zod
-      .object({
-        meals: zod.array(
-          zod.object({
-            name: zod.string(),
-            time: zod.string().optional(),
-            calories: zod.number(),
-            protein: zod.number(),
-            carbs: zod.number(),
-            fat: zod.number(),
-            ingredients: zod.array(zod.string()),
-          }),
-        ),
-        dailyCalories: zod.number(),
-        macros: zod.object({
-          proteinG: zod.number(),
-          carbsG: zod.number(),
-          fatG: zod.number(),
+export const GetStateResponse = zod.object({
+  profile: zod
+    .object({
+      userId: zod.string(),
+      name: zod.string(),
+      age: zod.number().nullish(),
+      weightKg: zod.number().nullish(),
+      heightCm: zod.number().nullish(),
+      goal: zod.enum([
+        "lose_weight",
+        "build_muscle",
+        "maintain",
+        "improve_endurance",
+      ]),
+      allergies: zod.array(zod.string()),
+      preferences: zod.array(zod.string()),
+      budgetPerWeek: zod.number().nullish(),
+      availableDays: zod.array(zod.string()),
+      sessionDurationMin: zod.number().nullish(),
+      equipment: zod.array(zod.string()),
+      injuries: zod.array(zod.string()),
+      mode: zod.enum(["auto", "confirm"]),
+    })
+    .nullable(),
+  dietPlan: zod
+    .object({
+      meals: zod.array(
+        zod.object({
+          name: zod.string(),
+          time: zod.string().optional(),
+          calories: zod.number(),
+          protein: zod.number(),
+          carbs: zod.number(),
+          fat: zod.number(),
+          ingredients: zod.array(zod.string()),
         }),
-        notes: zod.string().nullish(),
-      })
-      .nullable(),
-    workoutPlan: zod
-      .object({
-        sessions: zod.array(
-          zod.object({
-            day: zod.enum([
-              "monday",
-              "tuesday",
-              "wednesday",
-              "thursday",
-              "friday",
-              "saturday",
-              "sunday",
-            ]),
-            name: zod.string(),
-            durationMin: zod.number(),
-            exercises: zod.array(
-              zod.object({
-                name: zod.string(),
-                sets: zod.number().optional(),
-                reps: zod.number().optional(),
-                restSec: zod.number().optional(),
-              }),
-            ),
-          }),
-        ),
-        notes: zod.string().nullish(),
-      })
-      .nullable(),
-    schedule: zod
-      .object({
-        events: zod.array(
-          zod.object({
-            title: zod.string(),
-            date: zod.coerce.date(),
-            time: zod.string().optional(),
-            type: zod.enum(["workout", "meal", "check_in"]),
-            durationMin: zod.number().optional(),
-          }),
-        ),
-      })
-      .nullable(),
-    progress: zod
-      .object({
-        xp: zod.number(),
-        streak: zod.number(),
-        level: zod.number(),
-        history: zod.array(
-          zod.object({
-            type: zod.enum(["workout", "diet"]),
-            completedAt: zod.coerce.date(),
-            xpGained: zod.number(),
-            notes: zod.string().nullish(),
-          }),
-        ),
-        lastLoggedAt: zod.coerce.date().nullish(),
-        xpToNextLevel: zod.number().optional(),
-      })
-      .nullable(),
-  })
-  .describe("Complete fitness state for a user");
+      ),
+      dailyCalories: zod.number(),
+      macros: zod.object({
+        proteinG: zod.number(),
+        carbsG: zod.number(),
+        fatG: zod.number(),
+      }),
+      notes: zod.string().nullish(),
+    })
+    .nullable(),
+  workoutPlan: zod
+    .object({
+      sessions: zod.array(
+        zod.object({
+          day: zod.string(),
+          name: zod.string(),
+          durationMin: zod.number(),
+          exercises: zod.array(
+            zod.object({
+              name: zod.string(),
+              sets: zod.number().optional(),
+              reps: zod.number().optional(),
+              restSec: zod.number().optional(),
+            }),
+          ),
+        }),
+      ),
+      notes: zod.string().nullish(),
+    })
+    .nullable(),
+  schedule: zod
+    .object({
+      events: zod.array(
+        zod.object({
+          title: zod.string(),
+          date: zod.coerce.date(),
+          time: zod.string().optional(),
+          type: zod.enum(["workout", "meal", "check_in"]),
+          durationMin: zod.number().optional(),
+        }),
+      ),
+    })
+    .nullable(),
+  progress: zod
+    .object({
+      xp: zod.number(),
+      streak: zod.number(),
+      level: zod.number(),
+      history: zod.array(
+        zod.object({
+          type: zod.enum(["workout", "diet"]),
+          completedAt: zod.coerce.date(),
+          xpGained: zod.number(),
+          notes: zod.string().nullish(),
+        }),
+      ),
+      achievements: zod.array(
+        zod.object({
+          id: zod.string(),
+          name: zod.string(),
+          description: zod.string(),
+          earnedAt: zod.coerce.date(),
+          xpBonus: zod.number(),
+        }),
+      ),
+      reminders: zod.array(
+        zod.object({
+          id: zod.string(),
+          message: zod.string(),
+          type: zod.enum([
+            "missed_workout",
+            "missed_diet",
+            "weekly_report",
+            "plan_renewal",
+          ]),
+          createdAt: zod.coerce.date(),
+          read: zod.boolean(),
+        }),
+      ),
+      lastLoggedAt: zod.coerce.date().nullish(),
+      xpToNextLevel: zod.number().optional(),
+    })
+    .nullable(),
+});
 
 /**
- * Upserts the fitness state for a user. You can update the entire state
-or only specific sections (profile, dietPlan, workoutPlan, schedule).
-Omitted sections are left unchanged.
-
  * @summary Save or update user fitness state
  */
 export const SaveStateParams = zod.object({
-  userId: zod.coerce.string().describe("Unique user identifier"),
+  userId: zod.coerce.string(),
 });
 
-export const SaveStateBody = zod
-  .object({
+export const SaveStateBody = zod.object({
+  profile: zod
+    .object({
+      name: zod.string().optional(),
+      age: zod.number().optional(),
+      weightKg: zod.number().optional(),
+      heightCm: zod.number().optional(),
+      goal: zod
+        .enum(["lose_weight", "build_muscle", "maintain", "improve_endurance"])
+        .optional(),
+      allergies: zod.array(zod.string()).optional(),
+      preferences: zod.array(zod.string()).optional(),
+      budgetPerWeek: zod.number().optional(),
+      availableDays: zod.array(zod.string()).optional(),
+      sessionDurationMin: zod.number().optional(),
+      equipment: zod.array(zod.string()).optional(),
+      injuries: zod.array(zod.string()).optional(),
+      mode: zod.enum(["auto", "confirm"]).optional(),
+    })
+    .optional(),
+  dietPlan: zod
+    .object({
+      meals: zod.array(
+        zod.object({
+          name: zod.string(),
+          time: zod.string().optional(),
+          calories: zod.number(),
+          protein: zod.number(),
+          carbs: zod.number(),
+          fat: zod.number(),
+          ingredients: zod.array(zod.string()),
+        }),
+      ),
+      dailyCalories: zod.number(),
+      macros: zod.object({
+        proteinG: zod.number(),
+        carbsG: zod.number(),
+        fatG: zod.number(),
+      }),
+      notes: zod.string().nullish(),
+    })
+    .optional(),
+  workoutPlan: zod
+    .object({
+      sessions: zod.array(
+        zod.object({
+          day: zod.string(),
+          name: zod.string(),
+          durationMin: zod.number(),
+          exercises: zod.array(
+            zod.object({
+              name: zod.string(),
+              sets: zod.number().optional(),
+              reps: zod.number().optional(),
+              restSec: zod.number().optional(),
+            }),
+          ),
+        }),
+      ),
+      notes: zod.string().nullish(),
+    })
+    .optional(),
+  schedule: zod
+    .object({
+      events: zod.array(
+        zod.object({
+          title: zod.string(),
+          date: zod.coerce.date(),
+          time: zod.string().optional(),
+          type: zod.enum(["workout", "meal", "check_in"]),
+          durationMin: zod.number().optional(),
+        }),
+      ),
+    })
+    .optional(),
+});
+
+export const SaveStateResponse = zod.object({
+  profile: zod
+    .object({
+      userId: zod.string(),
+      name: zod.string(),
+      age: zod.number().nullish(),
+      weightKg: zod.number().nullish(),
+      heightCm: zod.number().nullish(),
+      goal: zod.enum([
+        "lose_weight",
+        "build_muscle",
+        "maintain",
+        "improve_endurance",
+      ]),
+      allergies: zod.array(zod.string()),
+      preferences: zod.array(zod.string()),
+      budgetPerWeek: zod.number().nullish(),
+      availableDays: zod.array(zod.string()),
+      sessionDurationMin: zod.number().nullish(),
+      equipment: zod.array(zod.string()),
+      injuries: zod.array(zod.string()),
+      mode: zod.enum(["auto", "confirm"]),
+    })
+    .nullable(),
+  dietPlan: zod
+    .object({
+      meals: zod.array(
+        zod.object({
+          name: zod.string(),
+          time: zod.string().optional(),
+          calories: zod.number(),
+          protein: zod.number(),
+          carbs: zod.number(),
+          fat: zod.number(),
+          ingredients: zod.array(zod.string()),
+        }),
+      ),
+      dailyCalories: zod.number(),
+      macros: zod.object({
+        proteinG: zod.number(),
+        carbsG: zod.number(),
+        fatG: zod.number(),
+      }),
+      notes: zod.string().nullish(),
+    })
+    .nullable(),
+  workoutPlan: zod
+    .object({
+      sessions: zod.array(
+        zod.object({
+          day: zod.string(),
+          name: zod.string(),
+          durationMin: zod.number(),
+          exercises: zod.array(
+            zod.object({
+              name: zod.string(),
+              sets: zod.number().optional(),
+              reps: zod.number().optional(),
+              restSec: zod.number().optional(),
+            }),
+          ),
+        }),
+      ),
+      notes: zod.string().nullish(),
+    })
+    .nullable(),
+  schedule: zod
+    .object({
+      events: zod.array(
+        zod.object({
+          title: zod.string(),
+          date: zod.coerce.date(),
+          time: zod.string().optional(),
+          type: zod.enum(["workout", "meal", "check_in"]),
+          durationMin: zod.number().optional(),
+        }),
+      ),
+    })
+    .nullable(),
+  progress: zod
+    .object({
+      xp: zod.number(),
+      streak: zod.number(),
+      level: zod.number(),
+      history: zod.array(
+        zod.object({
+          type: zod.enum(["workout", "diet"]),
+          completedAt: zod.coerce.date(),
+          xpGained: zod.number(),
+          notes: zod.string().nullish(),
+        }),
+      ),
+      achievements: zod.array(
+        zod.object({
+          id: zod.string(),
+          name: zod.string(),
+          description: zod.string(),
+          earnedAt: zod.coerce.date(),
+          xpBonus: zod.number(),
+        }),
+      ),
+      reminders: zod.array(
+        zod.object({
+          id: zod.string(),
+          message: zod.string(),
+          type: zod.enum([
+            "missed_workout",
+            "missed_diet",
+            "weekly_report",
+            "plan_renewal",
+          ]),
+          createdAt: zod.coerce.date(),
+          read: zod.boolean(),
+        }),
+      ),
+      lastLoggedAt: zod.coerce.date().nullish(),
+      xpToNextLevel: zod.number().optional(),
+    })
+    .nullable(),
+});
+
+/**
+ * Awards XP, updates streak, checks for new achievements, and returns gamification feedback.
+XP rules: workout=50, diet=30, streak bonus=+10/day (max 10 days), weekly bonus=+100 if 5+ days/week, level up every 500 XP.
+
+ * @summary Log a workout or diet completion event
+ */
+export const LogCompletionBody = zod.object({
+  userId: zod.string(),
+  type: zod.enum(["workout", "diet"]),
+  notes: zod.string().nullish(),
+});
+
+export const LogCompletionResponse = zod.object({
+  xpGained: zod.number(),
+  totalXp: zod.number(),
+  streak: zod.number(),
+  level: zod.number(),
+  leveledUp: zod.boolean(),
+  xpToNextLevel: zod.number(),
+  message: zod.string(),
+  newAchievements: zod
+    .array(
+      zod.object({
+        name: zod.string().optional(),
+        description: zod.string().optional(),
+        xpBonus: zod.number().optional(),
+      }),
+    )
+    .nullish(),
+  reminders: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        message: zod.string(),
+        type: zod.enum([
+          "missed_workout",
+          "missed_diet",
+          "weekly_report",
+          "plan_renewal",
+        ]),
+        createdAt: zod.coerce.date(),
+        read: zod.boolean(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * Takes raw user text and uses AI to extract a structured fitness profile patch.
+Pass the result to save_state to persist it.
+
+ * @summary Normalize messy user input into structured fitness data
+ */
+export const NormalizeUserInputBody = zod.object({
+  input: zod.string(),
+  userId: zod.string().optional(),
+});
+
+export const NormalizeUserInputResponse = zod.object({
+  extracted: zod.object({
     profile: zod
       .object({
         name: zod.string().optional(),
@@ -185,8 +435,7 @@ export const SaveStateBody = zod
         injuries: zod.array(zod.string()).optional(),
         mode: zod.enum(["auto", "confirm"]).optional(),
       })
-      .optional()
-      .describe("User profile fields to upsert (all optional)"),
+      .optional(),
     dietPlan: zod
       .object({
         meals: zod.array(
@@ -213,15 +462,7 @@ export const SaveStateBody = zod
       .object({
         sessions: zod.array(
           zod.object({
-            day: zod.enum([
-              "monday",
-              "tuesday",
-              "wednesday",
-              "thursday",
-              "friday",
-              "saturday",
-              "sunday",
-            ]),
+            day: zod.string(),
             name: zod.string(),
             durationMin: zod.number(),
             exercises: zod.array(
@@ -250,292 +491,436 @@ export const SaveStateBody = zod
         ),
       })
       .optional(),
-  })
-  .describe(
-    "Partial fitness state update — only include sections you want to change",
-  );
-
-export const SaveStateResponse = zod
-  .object({
-    profile: zod
-      .object({
-        userId: zod.string(),
-        name: zod.string(),
-        age: zod.number().nullish(),
-        weightKg: zod.number().nullish(),
-        heightCm: zod.number().nullish(),
-        goal: zod.enum([
-          "lose_weight",
-          "build_muscle",
-          "maintain",
-          "improve_endurance",
-        ]),
-        allergies: zod.array(zod.string()),
-        preferences: zod.array(zod.string()),
-        budgetPerWeek: zod.number().nullish(),
-        availableDays: zod.array(
-          zod.enum([
-            "monday",
-            "tuesday",
-            "wednesday",
-            "thursday",
-            "friday",
-            "saturday",
-            "sunday",
-          ]),
-        ),
-        sessionDurationMin: zod.number().nullish(),
-        equipment: zod.array(zod.string()),
-        injuries: zod.array(zod.string()),
-        mode: zod.enum(["auto", "confirm"]),
-      })
-      .nullable()
-      .describe("User's personal data and fitness preferences"),
-    dietPlan: zod
-      .object({
-        meals: zod.array(
-          zod.object({
-            name: zod.string(),
-            time: zod.string().optional(),
-            calories: zod.number(),
-            protein: zod.number(),
-            carbs: zod.number(),
-            fat: zod.number(),
-            ingredients: zod.array(zod.string()),
-          }),
-        ),
-        dailyCalories: zod.number(),
-        macros: zod.object({
-          proteinG: zod.number(),
-          carbsG: zod.number(),
-          fatG: zod.number(),
-        }),
-        notes: zod.string().nullish(),
-      })
-      .nullable(),
-    workoutPlan: zod
-      .object({
-        sessions: zod.array(
-          zod.object({
-            day: zod.enum([
-              "monday",
-              "tuesday",
-              "wednesday",
-              "thursday",
-              "friday",
-              "saturday",
-              "sunday",
-            ]),
-            name: zod.string(),
-            durationMin: zod.number(),
-            exercises: zod.array(
-              zod.object({
-                name: zod.string(),
-                sets: zod.number().optional(),
-                reps: zod.number().optional(),
-                restSec: zod.number().optional(),
-              }),
-            ),
-          }),
-        ),
-        notes: zod.string().nullish(),
-      })
-      .nullable(),
-    schedule: zod
-      .object({
-        events: zod.array(
-          zod.object({
-            title: zod.string(),
-            date: zod.coerce.date(),
-            time: zod.string().optional(),
-            type: zod.enum(["workout", "meal", "check_in"]),
-            durationMin: zod.number().optional(),
-          }),
-        ),
-      })
-      .nullable(),
-    progress: zod
-      .object({
-        xp: zod.number(),
-        streak: zod.number(),
-        level: zod.number(),
-        history: zod.array(
-          zod.object({
-            type: zod.enum(["workout", "diet"]),
-            completedAt: zod.coerce.date(),
-            xpGained: zod.number(),
-            notes: zod.string().nullish(),
-          }),
-        ),
-        lastLoggedAt: zod.coerce.date().nullish(),
-        xpToNextLevel: zod.number().optional(),
-      })
-      .nullable(),
-  })
-  .describe("Complete fitness state for a user");
-
-/**
- * Records that the user completed a workout session or followed their
-diet plan. Awards XP, updates streak, and returns gamification feedback.
-
-XP rules:
-- Workout completion: 50 XP base
-- Diet completion: 30 XP base
-- Streak bonus: +10 XP per day of active streak
-- Level up at every 500 XP
-
- * @summary Log a workout or diet completion event
- */
-export const LogCompletionBody = zod.object({
-  userId: zod.string(),
-  type: zod.enum(["workout", "diet"]),
-  notes: zod.string().nullish(),
-});
-
-export const LogCompletionResponse = zod.object({
-  xpGained: zod.number(),
-  totalXp: zod.number(),
-  streak: zod.number(),
-  level: zod.number(),
-  leveledUp: zod.boolean(),
-  xpToNextLevel: zod.number(),
-  message: zod.string(),
-});
-
-/**
- * Takes raw, unstructured user text (e.g. "i go gym monday maybe 6pm,
-i like chicken, hate fish") and uses AI to extract and return a
-structured fitness profile patch. The AI figures out what fields
-can be inferred and returns only those — you can then pass the result
-to save_state.
-
- * @summary Normalize messy user input into structured fitness data
- */
-export const NormalizeUserInputBody = zod.object({
-  input: zod
-    .string()
-    .describe("Raw, unstructured user text about their fitness preferences"),
-  userId: zod
-    .string()
-    .optional()
-    .describe(
-      "Optional — if provided, existing profile is used as context\nfor smarter extraction\n",
-    ),
-});
-
-export const NormalizeUserInputResponse = zod.object({
-  extracted: zod
-    .object({
-      profile: zod
-        .object({
-          name: zod.string().optional(),
-          age: zod.number().optional(),
-          weightKg: zod.number().optional(),
-          heightCm: zod.number().optional(),
-          goal: zod
-            .enum([
-              "lose_weight",
-              "build_muscle",
-              "maintain",
-              "improve_endurance",
-            ])
-            .optional(),
-          allergies: zod.array(zod.string()).optional(),
-          preferences: zod.array(zod.string()).optional(),
-          budgetPerWeek: zod.number().optional(),
-          availableDays: zod.array(zod.string()).optional(),
-          sessionDurationMin: zod.number().optional(),
-          equipment: zod.array(zod.string()).optional(),
-          injuries: zod.array(zod.string()).optional(),
-          mode: zod.enum(["auto", "confirm"]).optional(),
-        })
-        .optional()
-        .describe("User profile fields to upsert (all optional)"),
-      dietPlan: zod
-        .object({
-          meals: zod.array(
-            zod.object({
-              name: zod.string(),
-              time: zod.string().optional(),
-              calories: zod.number(),
-              protein: zod.number(),
-              carbs: zod.number(),
-              fat: zod.number(),
-              ingredients: zod.array(zod.string()),
-            }),
-          ),
-          dailyCalories: zod.number(),
-          macros: zod.object({
-            proteinG: zod.number(),
-            carbsG: zod.number(),
-            fatG: zod.number(),
-          }),
-          notes: zod.string().nullish(),
-        })
-        .optional(),
-      workoutPlan: zod
-        .object({
-          sessions: zod.array(
-            zod.object({
-              day: zod.enum([
-                "monday",
-                "tuesday",
-                "wednesday",
-                "thursday",
-                "friday",
-                "saturday",
-                "sunday",
-              ]),
-              name: zod.string(),
-              durationMin: zod.number(),
-              exercises: zod.array(
-                zod.object({
-                  name: zod.string(),
-                  sets: zod.number().optional(),
-                  reps: zod.number().optional(),
-                  restSec: zod.number().optional(),
-                }),
-              ),
-            }),
-          ),
-          notes: zod.string().nullish(),
-        })
-        .optional(),
-      schedule: zod
-        .object({
-          events: zod.array(
-            zod.object({
-              title: zod.string(),
-              date: zod.coerce.date(),
-              time: zod.string().optional(),
-              type: zod.enum(["workout", "meal", "check_in"]),
-              durationMin: zod.number().optional(),
-            }),
-          ),
-        })
-        .optional(),
-    })
-    .describe(
-      "Partial fitness state update — only include sections you want to change",
-    ),
+  }),
   rawInput: zod.string(),
   confidence: zod.enum(["high", "medium", "low"]),
-  notes: zod
-    .string()
-    .optional()
-    .describe("AI explanation of what was and wasn't extractable"),
+  notes: zod.string().optional(),
 });
 
 /**
- * Model Context Protocol (MCP) JSON-RPC endpoint. Connect Claude Desktop
-or any MCP client to this URL to get access to all fitness agent tools:
-get_state, save_state, log_completion, normalize_user_input.
+ * Reads the user's stored profile and uses AI to generate a structured plan.
+In confirm mode, returns a preview without saving — call again with confirmed:true to save.
+Requires the user's profile to already exist (call save_state first).
+
+ * @summary AI-generate a diet or workout plan based on user profile
+ */
+export const GeneratePlanBody = zod.object({
+  userId: zod.string(),
+  type: zod.enum(["diet", "workout"]),
+  confirmed: zod
+    .boolean()
+    .optional()
+    .describe("Set to true to save when user is in confirm mode"),
+});
+
+export const GeneratePlanResponse = zod.object({
+  plan: zod
+    .object({})
+    .passthrough()
+    .describe("The generated diet or workout plan"),
+  saved: zod.boolean(),
+  requiresConfirmation: zod.boolean().nullish(),
+  message: zod.string().nullish(),
+});
+
+/**
+ * Uses AI to expand a description (e.g. "schedule workouts for a month") into structured calendar events
+based on the user's workout plan and available days.
+In confirm mode, returns a preview without saving — call again with confirmed:true to save.
+
+ * @summary Generate and save calendar events for the user's fitness plan
+ */
+export const ScheduleEventsBody = zod.object({
+  userId: zod.string(),
+  description: zod
+    .string()
+    .optional()
+    .describe(
+      'Natural language description (e.g. \"schedule workouts for next month\")',
+    ),
+  startDate: zod.coerce
+    .date()
+    .optional()
+    .describe("Start date (defaults to today)"),
+  durationDays: zod
+    .number()
+    .optional()
+    .describe("Number of days to schedule (default 30)"),
+  confirmed: zod
+    .boolean()
+    .optional()
+    .describe("Set to true to save when user is in confirm mode"),
+  eventType: zod.enum(["workout", "meal", "both"]).optional(),
+});
+
+export const ScheduleEventsResponse = zod.object({
+  events: zod.array(
+    zod.object({
+      title: zod.string(),
+      date: zod.coerce.date(),
+      time: zod.string().optional(),
+      type: zod.enum(["workout", "meal", "check_in"]),
+      durationMin: zod.number().optional(),
+    }),
+  ),
+  count: zod.number(),
+  saved: zod.boolean(),
+  startDate: zod.string(),
+  durationDays: zod.number(),
+  requiresConfirmation: zod.boolean().nullish(),
+  message: zod.string().nullish(),
+});
+
+/**
+ * @summary Clear all scheduled events for a user
+ */
+export const ClearScheduleQueryParams = zod.object({
+  userId: zod.coerce.string().optional(),
+});
+
+export const ClearScheduleResponse = zod.object({
+  success: zod.boolean().optional(),
+});
+
+/**
+ * Returns a formatted report with profile, progress, achievements, history, diet plan, and workout plan.
+Supports json (default), csv, and html formats.
+
+The json response includes a `downloadUrl` for every format and, when `format=html`, an additional
+`embedUrl` with `embed=true` appended — use `embedUrl` to open the report inline in a browser or
+iframe, and `downloadUrl` to trigger a file download.
+
+Pass `embed=true` directly on an html request to strip the Content-Disposition header so the page
+loads inline instead of downloading.
+
+ * @summary Export a full fitness progress report
+ */
+export const ExportReportParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const exportReportQueryFormatDefault = `json`;
+export const exportReportQueryEmbedDefault = false;
+
+export const ExportReportQueryParams = zod.object({
+  format: zod
+    .enum(["json", "csv", "html", "markdown"])
+    .default(exportReportQueryFormatDefault)
+    .describe(
+      "Output format. Defaults to json. Use markdown for Notion-compatible output.",
+    ),
+  embed: zod.coerce
+    .boolean()
+    .default(exportReportQueryEmbedDefault)
+    .describe(
+      "HTML format only. When true, omits the Content-Disposition attachment header so the report\nrenders inline in a browser tab or iframe rather than triggering a file download.\n",
+    ),
+});
+
+export const ExportReportResponse = zod
+  .object({
+    exportedAt: zod.coerce.date(),
+    userId: zod.string(),
+    profile: zod.object({
+      name: zod.string(),
+      goal: zod.string(),
+      age: zod.number().nullish(),
+      weightKg: zod.number().nullish(),
+      mode: zod.enum(["auto", "confirm"]),
+    }),
+    progress: zod.object({
+      xp: zod.number(),
+      streak: zod.number(),
+      level: zod.number(),
+      xpToNextLevel: zod.number(),
+      workoutLogs: zod.number(),
+      dietLogs: zod.number(),
+      totalLogs: zod.number(),
+    }),
+    achievements: zod.array(
+      zod.object({
+        name: zod.string(),
+        description: zod.string(),
+        earnedAt: zod.coerce.date(),
+      }),
+    ),
+    dietPlan: zod
+      .object({
+        dailyCalories: zod.number().optional(),
+        macros: zod.object({}).passthrough().optional(),
+      })
+      .nullish(),
+    workoutPlan: zod
+      .object({
+        sessionCount: zod.number().optional(),
+      })
+      .nullish(),
+    schedule: zod
+      .object({
+        eventCount: zod.number().optional(),
+      })
+      .nullish(),
+    recentHistory: zod
+      .array(
+        zod.object({
+          type: zod.enum(["workout", "diet"]),
+          completedAt: zod.coerce.date(),
+          xpGained: zod.number(),
+          notes: zod.string().nullish(),
+        }),
+      )
+      .describe("Last 10 completion events"),
+    downloadUrl: zod
+      .string()
+      .describe("Relative URL that triggers a file download of this report"),
+    embedUrl: zod
+      .string()
+      .nullish()
+      .describe(
+        "Relative URL that serves the HTML report inline (no Content-Disposition header).\nOnly present when format=html. Use this URL to embed the report in an iframe\nor open it directly in a browser tab.\n",
+      ),
+  })
+  .describe(
+    "JSON fitness report returned by GET \/export\/{userId}?format=json (the default).\nAlso returned by csv and html formats wrapped in their respective content types.\nThe `embedUrl` field is only present when format=html — use it to open the interactive\npaginated report inline; use `downloadUrl` to trigger a file download.\n",
+  );
+
+/**
+ * Returns the user's workout and diet completion history with full pagination support.
+Results are sorted newest-first by default. Supports filtering by event type and sort order.
+
+ * @summary Get paginated completion event history for a user
+ */
+export const GetHistoryParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const getHistoryQueryPageDefault = 1;
+
+export const getHistoryQueryLimitDefault = 20;
+export const getHistoryQueryLimitMax = 100;
+
+export const getHistoryQuerySortDefault = `desc`;
+
+export const GetHistoryQueryParams = zod.object({
+  page: zod.coerce
+    .number()
+    .min(1)
+    .default(getHistoryQueryPageDefault)
+    .describe("Page number (1-indexed). Clamped to totalPages if too high."),
+  limit: zod.coerce
+    .number()
+    .max(getHistoryQueryLimitMax)
+    .default(getHistoryQueryLimitDefault)
+    .describe("Entries per page (max 100, invalid values fall back to 20)."),
+  type: zod
+    .enum(["workout", "diet"])
+    .optional()
+    .describe("Filter history by completion type."),
+  sort: zod
+    .enum(["asc", "desc"])
+    .default(getHistoryQuerySortDefault)
+    .describe(
+      "Sort order — desc returns newest first (default), asc returns oldest first.",
+    ),
+});
+
+export const GetHistoryResponse = zod.object({
+  userId: zod.string(),
+  history: zod.array(
+    zod.object({
+      type: zod.enum(["workout", "diet"]),
+      completedAt: zod.coerce.date(),
+      xpGained: zod.number(),
+      notes: zod.string().nullish(),
+    }),
+  ),
+  pagination: zod.object({
+    page: zod.number().describe("Current page number"),
+    limit: zod.number().describe("Items per page"),
+    total: zod.number().describe("Total entries after any type filter"),
+    totalPages: zod.number(),
+    hasNext: zod.boolean(),
+    hasPrev: zod.boolean(),
+  }),
+  summary: zod.object({
+    workoutLogs: zod
+      .number()
+      .describe("Lifetime total workout completions (unfiltered)"),
+    dietLogs: zod
+      .number()
+      .describe("Lifetime total diet completions (unfiltered)"),
+    totalLogs: zod.number().describe("workoutLogs + dietLogs"),
+    filteredTotal: zod
+      .number()
+      .describe(
+        "Total matching the current type filter (equals total when no filter)",
+      ),
+  }),
+});
+
+/**
+ * @summary Mark reminders as read
+ */
+export const MarkRemindersReadParams = zod.object({
+  userId: zod.coerce.string(),
+});
+
+export const MarkRemindersReadBody = zod.object({
+  ids: zod
+    .array(zod.string())
+    .optional()
+    .describe("Reminder IDs to mark as read. Omit to mark all as read."),
+});
+
+export const MarkRemindersReadResponse = zod.object({}).passthrough();
+
+/**
+ * @summary Get recommended system prompts and integration config for ChatGPT and Claude
+ */
+export const GetSystemPromptResponse = zod.object({}).passthrough();
+
+/**
+ * Accepts plain text descriptions OR a base64-encoded image (photo of a workout plan,
+handwritten notes, diet menu, etc.). AI vision extracts structured fitness data, which
+is then saved to the user's profile. Set save=false to preview the extraction without
+persisting it.
+
+ * @summary Ingest a workout plan, diet, or profile from text or an image
+ */
+export const ingestDataBodySaveDefault = true;
+
+export const IngestDataBody = zod.object({
+  userId: zod.string().describe("User ID to associate extracted data with."),
+  text: zod
+    .string()
+    .nullish()
+    .describe(
+      "Raw text to extract fitness data from (workout description, diet notes, profile info, etc.)",
+    ),
+  imageBase64: zod
+    .string()
+    .nullish()
+    .describe(
+      "Base64-encoded image (JPEG, PNG, WebP). AI vision will extract fitness data from it.",
+    ),
+  imageUrl: zod
+    .string()
+    .nullish()
+    .describe("Publicly-accessible image URL. Alternative to imageBase64."),
+  typeHint: zod
+    .enum(["auto", "workout", "diet", "profile", "schedule"])
+    .nullish()
+    .describe(
+      "Optional hint about what kind of data to extract. Defaults to auto-detect.",
+    ),
+  save: zod
+    .boolean()
+    .default(ingestDataBodySaveDefault)
+    .describe(
+      "When false, returns extracted data without saving to the database (preview mode).",
+    ),
+});
+
+export const IngestDataResponse = zod.object({
+  extracted: zod.object({
+    profile: zod
+      .object({
+        name: zod.string().optional(),
+        age: zod.number().optional(),
+        weightKg: zod.number().optional(),
+        heightCm: zod.number().optional(),
+        goal: zod
+          .enum([
+            "lose_weight",
+            "build_muscle",
+            "maintain",
+            "improve_endurance",
+          ])
+          .optional(),
+        allergies: zod.array(zod.string()).optional(),
+        preferences: zod.array(zod.string()).optional(),
+        budgetPerWeek: zod.number().optional(),
+        availableDays: zod.array(zod.string()).optional(),
+        sessionDurationMin: zod.number().optional(),
+        equipment: zod.array(zod.string()).optional(),
+        injuries: zod.array(zod.string()).optional(),
+        mode: zod.enum(["auto", "confirm"]).optional(),
+      })
+      .optional(),
+    dietPlan: zod
+      .object({
+        meals: zod.array(
+          zod.object({
+            name: zod.string(),
+            time: zod.string().optional(),
+            calories: zod.number(),
+            protein: zod.number(),
+            carbs: zod.number(),
+            fat: zod.number(),
+            ingredients: zod.array(zod.string()),
+          }),
+        ),
+        dailyCalories: zod.number(),
+        macros: zod.object({
+          proteinG: zod.number(),
+          carbsG: zod.number(),
+          fatG: zod.number(),
+        }),
+        notes: zod.string().nullish(),
+      })
+      .optional(),
+    workoutPlan: zod
+      .object({
+        sessions: zod.array(
+          zod.object({
+            day: zod.string(),
+            name: zod.string(),
+            durationMin: zod.number(),
+            exercises: zod.array(
+              zod.object({
+                name: zod.string(),
+                sets: zod.number().optional(),
+                reps: zod.number().optional(),
+                restSec: zod.number().optional(),
+              }),
+            ),
+          }),
+        ),
+        notes: zod.string().nullish(),
+      })
+      .optional(),
+    schedule: zod
+      .object({
+        events: zod.array(
+          zod.object({
+            title: zod.string(),
+            date: zod.coerce.date(),
+            time: zod.string().optional(),
+            type: zod.enum(["workout", "meal", "check_in"]),
+            durationMin: zod.number().optional(),
+          }),
+        ),
+      })
+      .optional(),
+  }),
+  detectedType: zod
+    .enum(["workout", "diet", "profile", "schedule", "mixed", "unknown"])
+    .describe("What kind of data the AI detected in the input."),
+  saved: zod
+    .boolean()
+    .describe("Whether the extracted data was saved to the database."),
+  summary: zod
+    .string()
+    .describe("Human-readable summary of what was extracted."),
+  confidence: zod.enum(["high", "medium", "low"]),
+});
+
+/**
+ * Model Context Protocol (MCP) JSON-RPC endpoint. All fitness tools are exposed here.
+Requires Accept header to include both application/json and text/event-stream.
 
  * @summary MCP server endpoint for Claude integration
  */
-export const McpEndpointBody = zod
-  .object({})
-  .passthrough()
-  .describe("MCP JSON-RPC request");
+export const McpEndpointBody = zod.object({}).passthrough();
 
 export const McpEndpointResponse = zod.object({}).passthrough();

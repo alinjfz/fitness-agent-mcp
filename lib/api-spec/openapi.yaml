@@ -21,6 +21,8 @@ tags:
     description: Core fitness agent tools
   - name: history
     description: Paginated completion event history
+  - name: ingest
+    description: Multi-format data ingestion (text, images, photos)
   - name: mcp
     description: Model Context Protocol server for Claude integration
 paths:
@@ -180,7 +182,7 @@ paths:
       summary: Clear all scheduled events for a user
       parameters:
         - name: userId
-          in: path
+          in: query
           required: false
           schema:
             type: string
@@ -221,9 +223,9 @@ paths:
           required: false
           schema:
             type: string
-            enum: [json, csv, html]
+            enum: [json, csv, html, markdown]
             default: json
-          description: Output format. Defaults to json.
+          description: Output format. Defaults to json. Use markdown for Notion-compatible output.
         - name: embed
           in: query
           required: false
@@ -355,6 +357,36 @@ paths:
             application/json:
               schema:
                 type: object
+
+  /ingest:
+    post:
+      operationId: ingestData
+      tags: [ingest]
+      summary: Ingest a workout plan, diet, or profile from text or an image
+      description: |
+        Accepts plain text descriptions OR a base64-encoded image (photo of a workout plan,
+        handwritten notes, diet menu, etc.). AI vision extracts structured fitness data, which
+        is then saved to the user's profile. Set save=false to preview the extraction without
+        persisting it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestRequest"
+      responses:
+        "200":
+          description: Extracted and optionally saved fitness data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResponse"
+        "400":
+          description: Missing userId or no input provided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /mcp:
     post:
@@ -1010,3 +1042,52 @@ components:
             Only present when format=html. Use this URL to embed the report in an iframe
             or open it directly in a browser tab.
       required: [exportedAt, userId, profile, progress, achievements, recentHistory, downloadUrl]
+
+    IngestRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+          description: User ID to associate extracted data with.
+        text:
+          type: string
+          nullable: true
+          description: Raw text to extract fitness data from (workout description, diet notes, profile info, etc.)
+        imageBase64:
+          type: string
+          nullable: true
+          description: Base64-encoded image (JPEG, PNG, WebP). AI vision will extract fitness data from it.
+        imageUrl:
+          type: string
+          nullable: true
+          description: Publicly-accessible image URL. Alternative to imageBase64.
+        typeHint:
+          type: string
+          nullable: true
+          enum: [auto, workout, diet, profile, schedule]
+          description: Optional hint about what kind of data to extract. Defaults to auto-detect.
+        save:
+          type: boolean
+          default: true
+          description: When false, returns extracted data without saving to the database (preview mode).
+      required: [userId]
+
+    IngestResponse:
+      type: object
+      properties:
+        extracted:
+          $ref: "#/components/schemas/SaveStateRequest"
+        detectedType:
+          type: string
+          enum: [workout, diet, profile, schedule, mixed, unknown]
+          description: What kind of data the AI detected in the input.
+        saved:
+          type: boolean
+          description: Whether the extracted data was saved to the database.
+        summary:
+          type: string
+          description: Human-readable summary of what was extracted.
+        confidence:
+          type: string
+          enum: [high, medium, low]
+      required: [extracted, detectedType, saved, summary, confidence]

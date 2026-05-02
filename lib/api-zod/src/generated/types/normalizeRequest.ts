@@ -12,10 +12,6 @@ Use userId to scope all state to a specific user. A simple string like
  */
 
 export interface NormalizeRequest {
-  /** Raw, unstructured user text about their fitness preferences */
   input: string;
-  /** Optional — if provided, existing profile is used as context
-for smarter extraction
- */
   userId?: string;
 }

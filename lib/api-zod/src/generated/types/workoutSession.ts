@@ -10,11 +10,10 @@ Use userId to scope all state to a specific user. A simple string like
 
  * OpenAPI spec version: 1.0.0
  */
-import type { WorkoutSessionDay } from "./workoutSessionDay";
 import type { WorkoutSessionExercisesItem } from "./workoutSessionExercisesItem";
 
 export interface WorkoutSession {
-  day: WorkoutSessionDay;
+  day: string;
   name: string;
   durationMin: number;
   exercises: WorkoutSessionExercisesItem[];

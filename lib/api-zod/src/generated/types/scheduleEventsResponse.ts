@@ -10,16 +10,14 @@ Use userId to scope all state to a specific user. A simple string like
 
  * OpenAPI spec version: 1.0.0
  */
+import type { ScheduleEvent } from "./scheduleEvent";
 
-export type WorkoutSessionDay =
-  (typeof WorkoutSessionDay)[keyof typeof WorkoutSessionDay];
-
-export const WorkoutSessionDay = {
-  monday: "monday",
-  tuesday: "tuesday",
-  wednesday: "wednesday",
-  thursday: "thursday",
-  friday: "friday",
-  saturday: "saturday",
-  sunday: "sunday",
-} as const;
+export interface ScheduleEventsResponse {
+  events: ScheduleEvent[];
+  count: number;
+  saved: boolean;
+  startDate: string;
+  durationDays: number;
+  requiresConfirmation?: boolean | null;
+  message?: string | null;
+}

@@ -15,11 +15,7 @@ import type { SaveStateRequestProfile } from "./saveStateRequestProfile";
 import type { Schedule } from "./schedule";
 import type { WorkoutPlan } from "./workoutPlan";
 
-/**
- * Partial fitness state update — only include sections you want to change
- */
 export interface SaveStateRequest {
-  /** User profile fields to upsert (all optional) */
   profile?: SaveStateRequestProfile;
   dietPlan?: DietPlan;
   workoutPlan?: WorkoutPlan;

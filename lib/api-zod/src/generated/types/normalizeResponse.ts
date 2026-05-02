@@ -17,6 +17,5 @@ export interface NormalizeResponse {
   extracted: SaveStateRequest;
   rawInput: string;
   confidence: NormalizeResponseConfidence;
-  /** AI explanation of what was and wasn't extractable */
   notes?: string;
 }
