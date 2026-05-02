@@ -94,6 +94,7 @@ A single PostgreSQL-backed Express API that acts as a universal fitness intellig
 | **11 — Normalize** | `POST /api/normalize` sends freeform user text to OpenAI and extracts structured profile fields with a confidence rating. |
 | **12 — Paginated History** | `GET /api/progress/:userId/history` with `page`, `limit` (max 100), `type` filter, `sort` order. Also added as MCP `get_history` tool available to all three AI clients. |
 | **13 — Multi-AI integration** | OpenAPI spec updated with history endpoint + new schemas. `get_history` MCP tool added (8th tool). GitHub Copilot support via `.vscode/mcp.json` + `.github/copilot-instructions.md`. `/api/system-prompt` now returns configs for all three AIs. |
+| **14 — Interactive HTML export** | HTML report upgraded to a fully client-side paginated activity log. All history embedded as JSON; no extra requests. Type filter, sort toggle, per-page selector (10/20/50/All), Previous/Next navigation. `embed=true` query param strips the download header so the report can be iframed or linked inline. |
 
 ---
 
@@ -136,7 +137,28 @@ Send any freeform text and the AI extracts structured profile fields. Example: `
 Three export formats from the same data:
 - **JSON** — machine-readable, suitable for AI parsing or backup.
 - **CSV** — three sections (Profile, Progress, Achievements) with a History appendix. Importable into Excel/Sheets.
-- **HTML** — styled report with stat cards, achievement table, and activity log. Print-friendly.
+- **HTML** — interactive report with stat cards, achievement table, and a fully client-side paginated activity log (see below).
+
+### HTML Report — Interactive Activity Log
+
+The HTML export embeds the user's **complete history** as a JSON data block, then renders it client-side. No extra network requests are made after the initial page load.
+
+**Controls available on the page:**
+
+| Control | Options | Default |
+|---------|---------|---------|
+| Type filter | All types / Workout only / Diet only | All types |
+| Sort order | Newest first / Oldest first | Newest first |
+| Per-page selector | 10 / 20 / 50 / All | 20 |
+| Pagination | Previous / Next buttons + page counter | Page 1 |
+
+The heading shows a live count: `Activity Log (40 of 97 entries)` — updated instantly when filters change.
+
+**Embed mode** — add `?embed=true` to strip the `Content-Disposition: attachment` download header. The report serves as a regular inline HTML page instead of a file download, suitable for iframing in a dashboard or linking directly:
+
+```
+GET /api/export/user_123?format=html&embed=true
+```
 
 ---
 
@@ -164,7 +186,7 @@ workspace/
 │       │   │   ├── normalize.ts       # POST /normalize
 │       │   │   ├── generatePlan.ts    # POST /generate-plan
 │       │   │   ├── scheduleEvents.ts  # POST /schedule-events, DELETE /schedule-events/:userId
-│       │   │   ├── export.ts          # GET /export/:userId
+│       │   │   ├── export.ts          # GET /export/:userId?format=json|csv|html&embed=true
 │       │   │   ├── progress.ts        # PATCH /progress/:userId/reminders/read
 │       │   │   ├── progressHistory.ts # GET /progress/:userId/history (paginated)
 │       │   │   ├── openapi.ts         # GET /openapi.json, GET /openapi.yaml
@@ -190,12 +212,12 @@ workspace/
 │               ├── generatePlan.extended.test.ts
 │               ├── scheduleEvents.test.ts
 │               ├── scheduleEvents.extended.test.ts
-│               ├── export.test.ts
+│               ├── export.test.ts         # JSON/CSV/HTML formats + embed mode + paginated log
 │               ├── progress.test.ts
-│               ├── progressHistory.test.ts  # Pagination, type filter, sort, empty history
+│               ├── progressHistory.test.ts
 │               ├── openapi.test.ts
 │               ├── mcp.test.ts
-│               ├── mcp.extended.test.ts     # get_history MCP tool + extended scenarios
+│               ├── mcp.extended.test.ts   # get_history MCP tool + extended scenarios
 │               └── workflows.test.ts
 │
 ├── lib/
@@ -204,7 +226,7 @@ workspace/
 │   │       ├── index.ts               # Exports: db, all tables, all types
 │   │       └── schema.ts             # Table definitions
 │   ├── api-spec/
-│   │   └── openapi.yaml              # Hand-authored OpenAPI 3.1 spec (9 paths, 16 schemas)
+│   │   └── openapi.yaml              # Hand-authored OpenAPI 3.1 spec (10 paths, 27 schemas)
 │   ├── api-zod/                       # @workspace/api-zod — generated Zod schemas
 │   ├── api-client-react/              # @workspace/api-client-react — generated React Query hooks
 │   └── integrations-openai-ai-server/ # @workspace/integrations-openai-ai-server — OpenAI client
@@ -372,7 +394,22 @@ AI-generates calendar events and appends them to the user's schedule.
 Clears all scheduled events. Returns `{ success: true }`.
 
 ### `GET /api/export/:userId`
-Exports a full fitness report. Query param `format=json|csv|html` (default json). Sets `Content-Disposition` attachment header. **404** if user not found, **400** if invalid format.
+Exports a full fitness report.
+
+**Query params:**
+
+| Param | Values | Default | Notes |
+|-------|--------|---------|-------|
+| `format` | `json`, `csv`, `html` | `json` | Output format |
+| `embed` | `true`, `false` | `false` | HTML only — strips `Content-Disposition` header so the page loads inline instead of downloading |
+
+**400** if invalid format. **404** if user not found.
+
+**embed mode example:**
+```
+GET /api/export/user_123?format=html&embed=true
+```
+Returns the full interactive HTML report as an inline page — suitable for iframing in a dashboard or linking from another page. Without `embed=true` (the default), the browser treats the response as a file download (`Content-Disposition: attachment`).
 
 ### `GET /api/progress/:userId/history`
 Returns paginated completion history.
@@ -592,7 +629,7 @@ The completion history is capped at the last 100 entries (`.slice(-100)`). Achie
 
 **Tags:** `health`, `state`, `tools`, `history`, `mcp`
 
-**Schemas defined (16):**
+**Schemas defined (27):**
 `HealthStatus`, `ErrorResponse`, `UserProfile`, `Meal`, `Macros`, `DietPlan`, `WorkoutSession`, `WorkoutPlan`, `ScheduleEvent`, `Schedule`, `Achievement`, `Reminder`, `CompletionEvent`, `Progress`, `FitnessState`, `SaveStateRequest`, `LogCompletionRequest`, `LogCompletionResponse`, `NormalizeRequest`, `NormalizeResponse`, `GeneratePlanRequest`, `GeneratePlanResponse`, `ScheduleEventsRequest`, `ScheduleEventsResponse`, `HistoryPagination`, `HistorySummary`, `HistoryResponse`
 
 **Import into ChatGPT:**
@@ -606,7 +643,7 @@ The completion history is capped at the last 100 entries (`.slice(-100)`). Achie
 
 Run: `pnpm --filter @workspace/api-server test`
 
-**Coverage: 20 test files, 320+ tests, all passing.**
+**Coverage: 19 test files, 340+ tests, all passing.**
 
 ### Strategy
 - **Unit tests** — pure function tests, no mocking
@@ -623,7 +660,7 @@ Run: `pnpm --filter @workspace/api-server test`
 |------|---------------|
 | `unit/gamification.test.ts` | Core functions: computeLevel, streak computation, checkNewAchievements, checkWeeklyBonus, reinforcementMessage |
 | `unit/gamification.extended.test.ts` | All 12 achievement unlock paths, XP constants, ACHIEVEMENT_DEFS validation, boundary conditions |
-| `integration/health.test.ts` | /healthz, /system-prompt (all three AI sections present) |
+| `integration/health.test.ts` | /healthz, /system-prompt (all three AI sections present, claude mentions get_history, copilot mentions all 8 tools) |
 | `integration/state.test.ts` | GET 200/404, PUT create/update |
 | `integration/state.extended.test.ts` | All 4 goals, both modes, 13 partial-update scenarios, array fields, type coercions |
 | `integration/logCompletion.test.ts` | XP fields, streak=1 on first log, first_workout achievement, accumulation |
@@ -633,12 +670,12 @@ Run: `pnpm --filter @workspace/api-server test`
 | `integration/generatePlan.extended.test.ts` | Plan overwrite, AI error handling, profile edge cases |
 | `integration/scheduleEvents.test.ts` | Event generation, accumulation, confirm mode, DELETE |
 | `integration/scheduleEvents.extended.test.ts` | Durations (1/7/90 days), startDate, AI errors, DELETE round-trips |
-| `integration/export.test.ts` | JSON/CSV/HTML formats, XP/achievement values, content-type headers |
+| `integration/export.test.ts` | JSON/CSV formats; HTML structure; paginated log (data blob, all entries embedded, pagination controls, type filter, sort, per-page, embed mode) |
 | `integration/progress.test.ts` | PATCH reminders/read, 404, mark-by-id, unread filter in state |
 | `integration/progressHistory.test.ts` | Pagination, type filter, sort order, summary accuracy, empty history, combined filters |
 | `integration/openapi.test.ts` | /openapi.json (10 paths, schemas), /openapi.yaml (CORS, content, JSON/YAML equivalence) |
 | `integration/mcp.test.ts` | MCP protocol, tools/list (8 tools + inputSchemas), 5 core tool calls |
-| `integration/mcp.extended.test.ts` | normalize/schedule via MCP, full-data get_state, export formats, save_state, get_history tool |
+| `integration/mcp.extended.test.ts` | normalize/schedule via MCP, full-data get_state, export formats, save_state, get_history tool (10 scenarios) |
 | `integration/workflows.test.ts` | 5 end-to-end journeys (onboarding, confirm mode plans, confirm mode schedule, XP accumulation, reminders) |
 
 ---

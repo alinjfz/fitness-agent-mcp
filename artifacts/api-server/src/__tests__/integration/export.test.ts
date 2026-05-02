@@ -228,4 +228,44 @@ describe("GET /api/export/:userId", () => {
       expect(res.text).toContain("currentPage");
     });
   });
+
+  describe("HTML format — embed mode", () => {
+    it("default HTML has Content-Disposition attachment header", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.headers["content-disposition"]).toMatch(/attachment/);
+      expect(res.headers["content-disposition"]).toMatch(/fitness-report/);
+    });
+
+    it("embed=true omits Content-Disposition header entirely", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html&embed=true`);
+      expect(res.status).toBe(200);
+      expect(res.headers["content-disposition"]).toBeUndefined();
+    });
+
+    it("embed=true still returns valid HTML", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html&embed=true`);
+      expect(res.headers["content-type"]).toMatch(/text\/html/);
+      expect(res.text).toContain("<!DOCTYPE html>");
+      expect(res.text).toContain("Test User");
+    });
+
+    it("embed=true HTML still contains the full paginated log", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html&embed=true`);
+      expect(res.text).toContain('id="history-data"');
+      expect(res.text).toContain('id="prev-btn"');
+      expect(res.text).toContain('id="next-btn"');
+      expect(res.text).toContain('id="type-filter"');
+    });
+
+    it("embed=false behaves identically to default (attachment)", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html&embed=false`);
+      expect(res.headers["content-disposition"]).toMatch(/attachment/);
+    });
+
+    it("embed param is ignored for non-HTML formats", async () => {
+      const resJson = await request.get(`/api/export/${userId}?format=json&embed=true`);
+      expect(resJson.status).toBe(200);
+      expect(resJson.headers["content-type"]).toMatch(/application\/json/);
+    });
+  });
 });

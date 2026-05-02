@@ -16,6 +16,7 @@ const router: IRouter = Router();
 router.get("/export/:userId", async (req, res) => {
   const { userId } = req.params;
   const format = (req.query["format"] as string) ?? "json";
+  const embed = req.query["embed"] === "true";
 
   const [profile, dietPlan, workoutPlan, schedule, prog] = await Promise.all([
     db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null),
@@ -111,7 +112,9 @@ router.get("/export/:userId", async (req, res) => {
     res.send(rows.join("\n"));
   } else if (format === "html") {
     res.setHeader("Content-Type", "text/html");
-    res.setHeader("Content-Disposition", `attachment; filename="fitness-report-${userId}-${reportDate}.html"`);
+    if (!embed) {
+      res.setHeader("Content-Disposition", `attachment; filename="fitness-report-${userId}-${reportDate}.html"`);
+    }
 
     const achievementRows = achievements
       .map((a) => `<tr><td>${a.name}</td><td>${a.description}</td><td>${a.earnedAt.split("T")[0]}</td><td>+${a.xpBonus} XP</td></tr>`)
