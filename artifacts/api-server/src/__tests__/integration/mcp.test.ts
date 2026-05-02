@@ -50,7 +50,7 @@ describe("POST /api/mcp — protocol", () => {
 });
 
 describe("POST /api/mcp — tools/list", () => {
-  it("returns all 7 tools", async () => {
+  it("returns all 8 tools", async () => {
     const res = await mcpCall("tools/list");
     const data = parseSseData(res.text) as { result: { tools: { name: string }[] } };
     expect(data).not.toBeNull();
@@ -62,8 +62,9 @@ describe("POST /api/mcp — tools/list", () => {
     expect(names).toContain("normalize_user_input");
     expect(names).toContain("generate_plan");
     expect(names).toContain("schedule_events");
+    expect(names).toContain("get_history");
     expect(names).toContain("export_report");
-    expect(names).toHaveLength(7);
+    expect(names).toHaveLength(8);
   });
 
   it("each tool has a name, description, and inputSchema", async () => {

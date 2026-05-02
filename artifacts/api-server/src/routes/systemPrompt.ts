@@ -56,6 +56,7 @@ const MCP_SYSTEM_PROMPT = `You are a personal fitness agent with access to struc
 - normalize_user_input(input, userId?): Parse messy user text into structured fitness data
 - generate_plan(userId, type): AI-generate a diet or workout plan based on profile
 - schedule_events(userId, description?, startDate?, durationDays?): Generate and save calendar events
+- get_history(userId, page?, limit?, type?, sort?): Paginated completion history with type filter and sort order
 - export_report(userId, format?): Download progress report in JSON/CSV/HTML
 
 ## Rules
@@ -63,9 +64,10 @@ const MCP_SYSTEM_PROMPT = `You are a personal fitness agent with access to struc
 2. Use normalize_user_input when the user provides unstructured input
 3. Respect the mode field — in confirm mode, show previews and ask before saving
 4. Always show the motivational message from log_completion
-5. Surface unread reminders from progress.reminders`;
+5. Surface unread reminders from progress.reminders
+6. Use get_history when the user asks to review past workouts/diet sessions or wants to browse their log`;
 
-const MCP_CONFIG_TEMPLATE = `{
+const CLAUDE_CONFIG_TEMPLATE = `{
   "mcpServers": {
     "fitness-agent": {
       "url": "YOUR_DEPLOYED_URL/api/mcp",
@@ -74,22 +76,60 @@ const MCP_CONFIG_TEMPLATE = `{
   }
 }`;
 
+const VSCODE_MCP_CONFIG_TEMPLATE = `{
+  "servers": {
+    "fitness-agent": {
+      "url": "YOUR_DEPLOYED_URL/api/mcp",
+      "type": "sse"
+    }
+  }
+}`;
+
+const COPILOT_SYSTEM_PROMPT = `You are a personal fitness agent with access to structured fitness tools via MCP.
+
+## Tools available
+- get_state(userId): Fetch full fitness profile, plans, schedule, and progress
+- save_state(userId, profile?, dietPlan?, workoutPlan?, schedule?): Save any section
+- log_completion(userId, type, notes?): Log workout/diet completion and get XP/streak feedback
+- normalize_user_input(input, userId?): Parse messy user text into structured fitness data
+- generate_plan(userId, type): AI-generate a diet or workout plan based on profile
+- schedule_events(userId, description?, startDate?, durationDays?): Generate and save calendar events
+- get_history(userId, page?, limit?, type?, sort?): Paginated completion history (filter by workout/diet, sort asc/desc)
+- export_report(userId, format?): Download progress report in JSON/CSV/HTML
+
+## Rules
+1. Always call get_state before answering questions about a user's fitness data
+2. Use normalize_user_input for any unstructured user text before calling save_state
+3. Respect mode: auto = save immediately; confirm = preview first, ask for approval
+4. Always surface the motivational message from log_completion
+5. Use get_history when the user wants to browse past sessions or audit their log`;
+
 router.get("/system-prompt", (_req, res) => {
   res.json({
     chatgpt: {
-      description: "Paste this as the System Prompt in your Custom GPT configuration",
+      description: "Paste this as the System Prompt in your Custom GPT configuration. Add an Action using the schema URL below.",
       prompt: CHATGPT_SYSTEM_PROMPT,
+      actions_schema_url: "/api/openapi.json",
     },
-    claude_mcp: {
-      description: "Use this as the system prompt for your Claude project",
+    claude: {
+      description: "Use this as the system prompt for your Claude project. Add the desktop config to connect the MCP server.",
       prompt: MCP_SYSTEM_PROMPT,
+      desktop_config: {
+        description: "Add to ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
+        config: CLAUDE_CONFIG_TEMPLATE,
+      },
     },
-    claude_desktop_config: {
-      description: "Add this to ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
-      config: MCP_CONFIG_TEMPLATE,
+    github_copilot: {
+      description: "Use with GitHub Copilot Chat in VS Code via MCP. Two steps: (1) add the VS Code MCP config, (2) the copilot-instructions.md is already in .github/ of this repo for workspace context.",
+      prompt: COPILOT_SYSTEM_PROMPT,
+      vscode_mcp_config: {
+        description: "Add to .vscode/mcp.json in your project (or user settings). Enables Copilot Chat to call all 8 fitness tools.",
+        config: VSCODE_MCP_CONFIG_TEMPLATE,
+      },
+      copilot_instructions_path: ".github/copilot-instructions.md",
     },
-    chatgpt_actions_url: "/api/openapi.json",
     mcp_endpoint: "/api/mcp",
+    openapi_url: "/api/openapi.json",
   });
 });
 

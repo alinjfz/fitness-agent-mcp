@@ -19,6 +19,8 @@ tags:
     description: Read and write the full fitness state for a user
   - name: tools
     description: Core fitness agent tools
+  - name: history
+    description: Paginated completion event history
   - name: mcp
     description: Model Context Protocol server for Claude integration
 paths:
@@ -228,6 +230,71 @@ paths:
             text/html:
               schema:
                 type: string
+
+  /progress/{userId}/history:
+    get:
+      operationId: getHistory
+      tags: [history]
+      summary: Get paginated completion event history for a user
+      description: |
+        Returns the user's workout and diet completion history with full pagination support.
+        Results are sorted newest-first by default. Supports filtering by event type and sort order.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Page number (1-indexed). Clamped to totalPages if too high.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Entries per page (max 100, invalid values fall back to 20).
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [workout, diet]
+          description: Filter history by completion type.
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: Sort order — desc returns newest first (default), asc returns oldest first.
+      responses:
+        "200":
+          description: Paginated completion history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+        "400":
+          description: Invalid type or sort value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No progress record found for this user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /progress/{userId}/reminders/read:
     patch:
@@ -771,3 +838,55 @@ components:
           type: string
           nullable: true
       required: [events, count, saved, startDate, durationDays]
+
+    HistoryPagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Current page number
+        limit:
+          type: integer
+          description: Items per page
+        total:
+          type: integer
+          description: Total entries after any type filter
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+      required: [page, limit, total, totalPages, hasNext, hasPrev]
+
+    HistorySummary:
+      type: object
+      properties:
+        workoutLogs:
+          type: integer
+          description: Lifetime total workout completions (unfiltered)
+        dietLogs:
+          type: integer
+          description: Lifetime total diet completions (unfiltered)
+        totalLogs:
+          type: integer
+          description: workoutLogs + dietLogs
+        filteredTotal:
+          type: integer
+          description: Total matching the current type filter (equals total when no filter)
+      required: [workoutLogs, dietLogs, totalLogs, filteredTotal]
+
+    HistoryResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletionEvent"
+        pagination:
+          $ref: "#/components/schemas/HistoryPagination"
+        summary:
+          $ref: "#/components/schemas/HistorySummary"
+      required: [userId, history, pagination, summary]

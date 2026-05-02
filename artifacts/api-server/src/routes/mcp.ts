@@ -260,6 +260,59 @@ function createMcpServer(): McpServer {
   );
 
   server.tool(
+    "get_history",
+    "Get paginated completion event history for a user. Filter by type (workout/diet), sort newest-first or oldest-first, and paginate through results. Summary always shows unfiltered lifetime totals.",
+    {
+      userId: z.string().describe("The user's unique identifier"),
+      page: z.number().int().optional().describe("Page number (default 1, 1-indexed)"),
+      limit: z.number().int().optional().describe("Items per page (default 20, max 100)"),
+      type: z.enum(["workout", "diet"]).optional().describe("Filter by event type"),
+      sort: z.enum(["asc", "desc"]).optional().describe("Sort order: desc=newest first (default), asc=oldest first"),
+    },
+    async ({ userId, page = 1, limit = 20, type: typeFilter, sort = "desc" }) => {
+      const MAX_LIMIT = 100;
+      const clampedLimit = Math.min(Math.max(1, limit), MAX_LIMIT);
+      const clampedPage = Math.max(1, page);
+
+      const prog = await db.select().from(progress).where(eq(progress.userId, userId)).then((r) => r[0] ?? null);
+      if (!prog) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: `No progress found for user '${userId}'` }) }], isError: true };
+      }
+
+      let history = (prog.history ?? []) as CompletionEvent[];
+      if (typeFilter) history = history.filter((h) => h.type === typeFilter);
+
+      if (sort === "desc") {
+        history = [...history].sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+      } else {
+        history = [...history].sort((a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime());
+      }
+
+      const total = history.length;
+      const totalPages = Math.max(1, Math.ceil(total / clampedLimit));
+      const actualPage = Math.min(clampedPage, totalPages);
+      const offset = (actualPage - 1) * clampedLimit;
+      const pageItems = history.slice(offset, offset + clampedLimit);
+
+      const allHistory = (prog.history ?? []) as CompletionEvent[];
+      const workoutLogs = allHistory.filter((h) => h.type === "workout").length;
+      const dietLogs = allHistory.filter((h) => h.type === "diet").length;
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            userId,
+            history: pageItems,
+            pagination: { page: actualPage, limit: clampedLimit, total, totalPages, hasNext: actualPage < totalPages, hasPrev: actualPage > 1 },
+            summary: { workoutLogs, dietLogs, totalLogs: workoutLogs + dietLogs, filteredTotal: total },
+          }, null, 2),
+        }],
+      };
+    }
+  );
+
+  server.tool(
     "export_report",
     "Export a formatted fitness progress report for a user. Returns JSON by default. Supported formats: json, csv, html.",
     {

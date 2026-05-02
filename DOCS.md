@@ -1,6 +1,6 @@
 # Fitness Agent Layer — Complete Documentation
 
-A single PostgreSQL-backed Express API that acts as a universal fitness intelligence layer for AI assistants. ChatGPT accesses it via OpenAPI / Custom GPT Actions; Claude accesses it via a built-in MCP (Model Context Protocol) server. Both AIs share the same state, gamification engine, and data — so a user can start a conversation in ChatGPT and continue in Claude without losing context.
+A single PostgreSQL-backed Express API that acts as a universal fitness intelligence layer for AI assistants. ChatGPT accesses it via OpenAPI / Custom GPT Actions; Claude accesses it via a built-in MCP (Model Context Protocol) server; GitHub Copilot accesses it via VS Code MCP configuration. All three AIs share the same state, gamification engine, and data.
 
 ---
 
@@ -14,44 +14,48 @@ A single PostgreSQL-backed Express API that acts as a universal fitness intellig
 6. [Setup Guide](#6-setup-guide)
 7. [REST API Reference](#7-rest-api-reference)
 8. [MCP Tools Reference](#8-mcp-tools-reference)
-9. [Gamification System](#9-gamification-system)
-10. [OpenAPI Spec](#10-openapi-spec)
-11. [Test Suite](#11-test-suite)
-12. [Configuration & Environment](#12-configuration--environment)
+9. [AI Client Integrations](#9-ai-client-integrations)
+10. [Gamification System](#10-gamification-system)
+11. [OpenAPI Spec](#11-openapi-spec)
+12. [Test Suite](#12-test-suite)
+13. [Configuration & Environment](#13-configuration--environment)
 
 ---
 
 ## 1. Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    AI Clients                               │
-│                                                             │
-│  ChatGPT (Custom GPT)          Claude (Desktop / API)       │
-│  └─ OpenAPI Actions ──────┐    └─ MCP StreamableHTTP ──┐   │
-└───────────────────────────┼────────────────────────────┼───┘
-                            │                            │
-                            ▼                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│               Express API  (/api/*)                         │
-│                                                             │
-│  REST Routes          MCP Server (/api/mcp)                 │
-│  ├─ /healthz          ├─ get_state                          │
-│  ├─ /state            ├─ save_state                         │
-│  ├─ /log-completion   ├─ log_completion                     │
-│  ├─ /normalize        ├─ normalize_user_input               │
-│  ├─ /generate-plan    ├─ generate_plan                      │
-│  ├─ /schedule-events  ├─ schedule_events                    │
-│  ├─ /export           └─ export_report                      │
-│  ├─ /progress/*                                             │
-│  ├─ /openapi.*                                              │
-│  └─ /system-prompt                                          │
-│                                                             │
-│  Gamification Engine    node-cron Jobs                      │
-│  └─ XP / Streak /       ├─ Daily: missed workout reminders  │
-│     Achievements /       ├─ Weekly: progress reports        │
-│     Weekly Bonus         └─ Monthly: plan renewal nudges    │
-└─────────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          AI Clients                                  │
+│                                                                      │
+│  ChatGPT (Custom GPT)    Claude (Desktop/API)    GitHub Copilot Chat │
+│  └─ OpenAPI Actions ──┐  └─ MCP StreamableHTTP─┐  └─ VS Code MCP ──┐│
+└───────────────────────┼──────────────────────  ┼────────────────── ┼┘
+                        │                         │                   │
+                        └─────────────────────────┴───────────────────┘
+                                                  │
+                                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Express API  (/api/*)                            │
+│                                                                      │
+│  REST Routes                    MCP Server (/api/mcp)               │
+│  ├─ /healthz                    ├─ get_state                         │
+│  ├─ /state                      ├─ save_state                        │
+│  ├─ /log-completion             ├─ log_completion                    │
+│  ├─ /normalize                  ├─ normalize_user_input              │
+│  ├─ /generate-plan              ├─ generate_plan                     │
+│  ├─ /schedule-events            ├─ schedule_events                   │
+│  ├─ /export                     ├─ get_history                       │
+│  ├─ /progress/:userId/history   └─ export_report                    │
+│  ├─ /progress/:userId/reminders/read                                 │
+│  ├─ /openapi.json + /openapi.yaml                                    │
+│  └─ /system-prompt                                                   │
+│                                                                      │
+│  Gamification Engine         node-cron Jobs                         │
+│  └─ XP / Streak /            ├─ Daily: missed workout reminders     │
+│     Achievements /            ├─ Weekly: progress reports           │
+│     Weekly Bonus              └─ Monthly: plan renewal nudges       │
+└─────────────────────────────┬───────────────────────────────────────┘
                               │
                               ▼
                     ┌─────────────────┐
@@ -66,9 +70,9 @@ A single PostgreSQL-backed Express API that acts as a universal fitness intellig
 ```
 
 **Key design decisions:**
-- One database, two AI surfaces — REST for ChatGPT, MCP for Claude, both hit the same tables.
-- State is user-scoped by `userId` string (passed by the AI or user).
-- All AI calls (plan generation, normalization, scheduling) use OpenAI via the Replit AI Integration proxy — no API key management needed.
+- One database, three AI surfaces — REST for ChatGPT, MCP for Claude and Copilot, both hit the same tables.
+- State is user-scoped by `userId` string.
+- All AI calls use OpenAI via the Replit AI Integration proxy — no API key management needed.
 - Confirm mode: any mutation endpoint respects `mode: "confirm"` on the user profile, returning a preview without saving until `confirmed: true` is sent.
 
 ---
@@ -81,14 +85,15 @@ A single PostgreSQL-backed Express API that acts as a universal fitness intellig
 | **2 — REST API skeleton** | Express 5 app with pino logging, CORS, JSON body parsing. All routes registered under `/api`. Health check at `/api/healthz`. |
 | **3 — State endpoints** | `GET /api/state/:userId` returns the complete user state in one call. `PUT /api/state/:userId` upserts any combination of profile / diet plan / workout plan / schedule. Partial updates merge into existing data. |
 | **4 — OpenAPI spec + Custom GPT** | Hand-authored `openapi.yaml` describing all endpoints. Served live at `/api/openapi.json` and `/api/openapi.yaml` with CORS headers for ChatGPT to import directly. |
-| **5 — MCP server** | `@modelcontextprotocol/sdk` StreamableHTTP transport at `/api/mcp`. All 7 tools listed in `tools/list`. Claude can call any tool via JSON-RPC. GET `/api/mcp` returns 405 (spec-compliant). |
-| **6 — AI plan generation** | `POST /api/generate-plan` calls OpenAI with a structured prompt built from the user's profile. Returns a typed workout or diet plan. Validate JSON from AI; return 500 on parse failure. |
+| **5 — MCP server** | `@modelcontextprotocol/sdk` StreamableHTTP transport at `/api/mcp`. All tools listed in `tools/list`. Claude can call any tool via JSON-RPC. |
+| **6 — AI plan generation** | `POST /api/generate-plan` calls OpenAI with a structured prompt built from the user's profile. Returns a typed workout or diet plan. Validates JSON from AI; returns 500 on parse failure. |
 | **7 — AI schedule generation** | `POST /api/schedule-events` calls OpenAI to produce a calendar of events from the user's plan and available days. Events accumulate across calls. `DELETE /api/schedule-events/:userId` clears them. |
-| **8 — Export** | `GET /api/export/:userId?format=json|csv|html` returns a full fitness report. JSON is machine-readable; CSV is spreadsheet-importable; HTML is a styled, printable report with stat cards and achievement tables. |
+| **8 — Export** | `GET /api/export/:userId?format=json\|csv\|html` returns a full fitness report. JSON is machine-readable; CSV is spreadsheet-importable; HTML is a styled, printable report with stat cards and achievement tables. |
 | **9 — Gamification** | Every `POST /api/log-completion` awards XP, computes streak, checks level-up, unlocks achievements, and applies a weekly bonus on the 5th unique active day. 12 achievement definitions. 100-entry history cap. |
-| **10 — node-cron + confirm mode + system-prompt** | Three scheduled jobs: daily missed-workout reminders (20:00), weekly progress reports (Sun 08:00), monthly plan renewal nudges (1st 09:00). Confirm mode: generate-plan and schedule-events return `requiresConfirmation: true, saved: false` for users with `mode: "confirm"` unless `confirmed: true` is sent. `GET /api/system-prompt` returns copy-paste system prompts for both ChatGPT and Claude. |
-| **11 — Normalize** | `POST /api/normalize` sends freeform user text to OpenAI and extracts structured profile fields (goal, days, equipment, allergies, etc.) with a confidence rating. Optional `userId` provides existing profile context. |
-| **12 — Paginated History** | `GET /api/progress/:userId/history` returns the completion event log with pagination (`page`, `limit` up to 100), type filtering (`workout`/`diet`), sort order (`asc`/`desc`), and summary counts. |
+| **10 — node-cron + confirm mode + system-prompt** | Three scheduled jobs (daily, weekly, monthly). Confirm mode preview/save flow. `GET /api/system-prompt` returns configs for ChatGPT, Claude, and Copilot. |
+| **11 — Normalize** | `POST /api/normalize` sends freeform user text to OpenAI and extracts structured profile fields with a confidence rating. |
+| **12 — Paginated History** | `GET /api/progress/:userId/history` with `page`, `limit` (max 100), `type` filter, `sort` order. Also added as MCP `get_history` tool available to all three AI clients. |
+| **13 — Multi-AI integration** | OpenAPI spec updated with history endpoint + new schemas. `get_history` MCP tool added (8th tool). GitHub Copilot support via `.vscode/mcp.json` + `.github/copilot-instructions.md`. `/api/system-prompt` now returns configs for all three AIs. |
 
 ---
 
@@ -103,18 +108,22 @@ A user's complete state is:
 - **Progress** — XP total, current level, streak, achievement list, 100-entry completion history, unread reminders.
 
 ### Confirm Mode
-Set `profile.mode = "confirm"` and AI-driven mutations (`generate_plan`, `schedule_events`) will return the proposed change with `requiresConfirmation: true, saved: false` — without writing to the database. Re-send the same request with `confirmed: true` to commit.
+Set `profile.mode = "confirm"` and AI-driven mutations (`generate_plan`, `schedule_events`) will return the proposed change with `requiresConfirmation: true, saved: false` — without writing to the database. Re-send with `confirmed: true` to commit.
 
 ### Normalize
-Send any freeform text and the AI extracts structured profile fields. Example input: `"I'm 28, I want to bulk up, I can train Mon/Wed/Fri, I have dumbbells"` → structured `{ name, goal: "build_muscle", availableDays: ["monday","wednesday","friday"], equipment: ["dumbbells"] }` plus `confidence` rating and `notes`.
+Send any freeform text and the AI extracts structured profile fields. Example: `"I'm 28, I want to bulk up, I can train Mon/Wed/Fri, I have dumbbells"` → `{ age: 28, goal: "build_muscle", availableDays: [...], equipment: [...] }` plus `confidence` rating and `notes`.
+
+### Paginated History
+`GET /api/progress/:userId/history` and MCP `get_history` both support:
+- `page` / `limit` (max 100) — pagination
+- `type=workout|diet` — filter by event type
+- `sort=asc|desc` — oldest-first or newest-first (default desc)
+- Response includes a `summary` with unfiltered lifetime totals alongside paginated `history` and `pagination` metadata.
 
 ### Gamification System
-- **XP per workout** — `XP_WORKOUT` (base)
-- **XP per diet log** — `XP_DIET` (base)
-- **Streak bonus** — `XP_STREAK_BONUS_PER_DAY` per consecutive day, capped at `MAX_STREAK_BONUS_DAYS`
-- **Weekly bonus** — `XP_WEEKLY_BONUS` when the 5th unique active day this week is logged
-- **Level** — every `XP_PER_LEVEL` XP, level = `floor(XP / XP_PER_LEVEL) + 1`
-- **Achievements** — 12 milestones (see [Gamification System](#9-gamification-system))
+- XP per workout/diet log + streak bonus + weekly bonus
+- Level-up every 500 XP
+- 12 achievements auto-unlocked during `log_completion`
 
 ### Scheduled Jobs (node-cron)
 | Job | Schedule | Action |
@@ -125,7 +134,7 @@ Send any freeform text and the AI extracts structured profile fields. Example in
 
 ### Reports
 Three export formats from the same data:
-- **JSON** — machine-readable, suitable for AI parsing or backup. Includes full profile, progress metrics, achievements, diet/workout/schedule summaries, and last 20 history entries.
+- **JSON** — machine-readable, suitable for AI parsing or backup.
 - **CSV** — three sections (Profile, Progress, Achievements) with a History appendix. Importable into Excel/Sheets.
 - **HTML** — styled report with stat cards, achievement table, and activity log. Print-friendly.
 
@@ -135,6 +144,11 @@ Three export formats from the same data:
 
 ```
 workspace/
+├── .github/
+│   └── copilot-instructions.md        # Workspace context for GitHub Copilot Chat
+├── .vscode/
+│   └── mcp.json                       # VS Code MCP config for Copilot (points to /api/mcp)
+│
 ├── artifacts/
 │   └── api-server/                    # Main Express API
 │       ├── .replit-artifact/
@@ -154,38 +168,35 @@ workspace/
 │       │   │   ├── progress.ts        # PATCH /progress/:userId/reminders/read
 │       │   │   ├── progressHistory.ts # GET /progress/:userId/history (paginated)
 │       │   │   ├── openapi.ts         # GET /openapi.json, GET /openapi.yaml
-│       │   │   ├── systemPrompt.ts    # GET /system-prompt
-│       │   │   └── mcp.ts             # POST /mcp (MCP StreamableHTTP server)
+│       │   │   ├── systemPrompt.ts    # GET /system-prompt (ChatGPT + Claude + Copilot configs)
+│       │   │   └── mcp.ts             # POST /mcp (MCP StreamableHTTP, 8 tools)
 │       │   └── lib/
 │       │       ├── gamification.ts    # XP, streak, achievements, messages
 │       │       ├── cron.ts            # node-cron scheduled jobs
 │       │       └── logger.ts          # pino singleton logger
-│       ├── src/__tests__/
-│       │   ├── helpers.ts             # Test factories, DB cleanup, SSE parser, mock factories
-│       │   ├── unit/
-│       │   │   ├── gamification.test.ts          # Core gamification function tests
-│       │   │   └── gamification.extended.test.ts # XP constants, all 12 achievements, edge cases
-│       │   └── integration/
-│       │       ├── health.test.ts                # /healthz, /system-prompt
-│       │       ├── state.test.ts                 # GET/PUT /state/:userId
-│       │       ├── state.extended.test.ts        # Partial updates, all goals, type coercions
-│       │       ├── logCompletion.test.ts         # Basic XP, streak, achievements
-│       │       ├── logCompletion.extended.test.ts# Streak bonus cap, weekly bonus, seeded DB
-│       │       ├── normalize.test.ts             # /normalize with mocked OpenAI
-│       │       ├── generatePlan.test.ts          # /generate-plan, confirm mode
-│       │       ├── generatePlan.extended.test.ts # Overwrite, AI errors, profile edge cases
-│       │       ├── scheduleEvents.test.ts        # /schedule-events, DELETE, confirm mode
-│       │       ├── scheduleEvents.extended.test.ts # Durations, startDate, AI errors
-│       │       ├── export.test.ts                # JSON/CSV/HTML exports
-│       │       ├── progress.test.ts              # PATCH reminders/read
-│       │       ├── progressHistory.test.ts       # GET history with pagination, filters, sort
-│       │       ├── openapi.test.ts               # /openapi.json and /openapi.yaml
-│       │       ├── mcp.test.ts                   # MCP protocol, tools/list, 5 tool calls
-│       │       ├── mcp.extended.test.ts          # normalize/schedule via MCP, full data state
-│       │       └── workflows.test.ts             # 5 end-to-end journey tests
-│       ├── build.mjs                  # esbuild bundler config
-│       ├── vitest.config.ts           # Vitest test runner config
-│       └── package.json
+│       └── src/__tests__/
+│           ├── helpers.ts             # uid(), createTestUser(), cleanupTestUser(), parseSseData(), mock factories
+│           ├── unit/
+│           │   ├── gamification.test.ts
+│           │   └── gamification.extended.test.ts
+│           └── integration/
+│               ├── health.test.ts
+│               ├── state.test.ts
+│               ├── state.extended.test.ts
+│               ├── logCompletion.test.ts
+│               ├── logCompletion.extended.test.ts
+│               ├── normalize.test.ts
+│               ├── generatePlan.test.ts
+│               ├── generatePlan.extended.test.ts
+│               ├── scheduleEvents.test.ts
+│               ├── scheduleEvents.extended.test.ts
+│               ├── export.test.ts
+│               ├── progress.test.ts
+│               ├── progressHistory.test.ts  # Pagination, type filter, sort, empty history
+│               ├── openapi.test.ts
+│               ├── mcp.test.ts
+│               ├── mcp.extended.test.ts     # get_history MCP tool + extended scenarios
+│               └── workflows.test.ts
 │
 ├── lib/
 │   ├── db/                            # @workspace/db — Drizzle ORM + schema
@@ -193,12 +204,12 @@ workspace/
 │   │       ├── index.ts               # Exports: db, all tables, all types
 │   │       └── schema.ts             # Table definitions
 │   ├── api-spec/
-│   │   └── openapi.yaml              # Hand-authored OpenAPI 3.1 spec
-│   ├── api-zod/                       # @workspace/api-zod — Zod schemas
-│   ├── api-client-react/              # @workspace/api-client-react — React Query hooks
+│   │   └── openapi.yaml              # Hand-authored OpenAPI 3.1 spec (9 paths, 16 schemas)
+│   ├── api-zod/                       # @workspace/api-zod — generated Zod schemas
+│   ├── api-client-react/              # @workspace/api-client-react — generated React Query hooks
 │   └── integrations-openai-ai-server/ # @workspace/integrations-openai-ai-server — OpenAI client
 │
-├── scripts/                           # Utility scripts (@workspace/scripts)
+├── scripts/                           # @workspace/scripts utility scripts
 ├── pnpm-workspace.yaml               # Workspace package catalog + overrides
 ├── tsconfig.base.json                # Shared strict TS defaults
 ├── tsconfig.json                     # Solution file (libs only)
@@ -210,7 +221,7 @@ workspace/
 
 ## 5. Database Schema
 
-All tables use `userId` (text) as the primary key or foreign key. Drizzle ORM manages migrations via `drizzle-kit push`.
+All tables use `userId` (text) as the primary key. Drizzle ORM manages migrations via `drizzle-kit push`.
 
 ### `user_profiles`
 | Column | Type | Notes |
@@ -222,7 +233,7 @@ All tables use `userId` (text) as the primary key or foreign key. Drizzle ORM ma
 | `heightCm` | numeric(6,2) | Stored as string, returned as number |
 | `goal` | text | `lose_weight`, `build_muscle`, `maintain`, `improve_endurance` |
 | `allergies` | jsonb | string[] |
-| `preferences` | jsonb | string[] (foods they like) |
+| `preferences` | jsonb | string[] |
 | `budgetPerWeek` | numeric(8,2) | USD, optional |
 | `availableDays` | jsonb | string[] of day names |
 | `sessionDurationMin` | integer | |
@@ -289,7 +300,7 @@ pnpm install
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
 SESSION_SECRET=<random string>
 ```
-If using Replit, these are set via the Secrets panel. The OpenAI integration is wired automatically via `@workspace/integrations-openai-ai-server`.
+In Replit, these are set via the Secrets panel. The OpenAI integration is wired automatically via `@workspace/integrations-openai-ai-server`.
 
 ### 3. Push the database schema
 ```bash
@@ -312,288 +323,105 @@ Or, in Replit, start the `API Server` workflow — it runs on the port assigned 
 pnpm --filter @workspace/api-server test
 ```
 
-### Connecting ChatGPT
-1. Go to `GET /api/system-prompt` for the exact system prompt and instructions.
-2. In your Custom GPT, set the Action schema URL to `https://<your-domain>/api/openapi.json`.
-3. Paste the system prompt from `chatgpt.prompt` into your GPT's instructions.
-
-### Connecting Claude
-1. Get the MCP endpoint from `GET /api/system-prompt` → `mcp_endpoint` (e.g. `/api/mcp`).
-2. Paste the Claude Desktop config from `claude_desktop_config` into `~/.claude/claude_desktop_config.json`.
-3. Claude will discover all 7 tools automatically via `tools/list`.
-
 ---
 
 ## 7. REST API Reference
 
 All routes are under the `/api` prefix. Requests/responses are JSON unless noted.
 
----
-
 ### `GET /api/healthz`
-Returns server health status.
-
-**Response 200**
 ```json
 { "status": "ok" }
 ```
 
----
-
 ### `GET /api/state/:userId`
-Returns the complete current state for a user.
-
-**Response 200**
-```json
-{
-  "profile": {
-    "userId": "user_123",
-    "name": "Jane",
-    "age": 28,
-    "weightKg": 65,
-    "heightCm": 168,
-    "goal": "build_muscle",
-    "allergies": ["nuts"],
-    "preferences": ["chicken"],
-    "availableDays": ["monday", "wednesday", "friday"],
-    "sessionDurationMin": 60,
-    "equipment": ["dumbbells"],
-    "injuries": [],
-    "mode": "auto"
-  },
-  "dietPlan": { "meals": [...], "dailyCalories": 2000, "macros": {...}, "notes": "..." },
-  "workoutPlan": { "sessions": [...], "notes": "..." },
-  "schedule": { "events": [...] },
-  "progress": {
-    "xp": 750, "streak": 5, "level": 2, "xpToNextLevel": 250,
-    "history": [...], "achievements": [...], "reminders": [...]
-  }
-}
-```
-**Response 404** — user not found.
-
----
+Returns the complete current state for a user (profile, dietPlan, workoutPlan, schedule, progress). **404** if user not found.
 
 ### `PUT /api/state/:userId`
-Upserts any combination of profile / diet plan / workout plan / schedule. All fields are optional — only provided fields are written.
-
-**Request body** (all fields optional)
-```json
-{
-  "profile": { "name": "Jane", "goal": "build_muscle", "mode": "auto", ... },
-  "dietPlan": { "meals": [...], "dailyCalories": 2000, "macros": {...} },
-  "workoutPlan": { "sessions": [...] },
-  "schedule": { "events": [...] }
-}
-```
-**Response 200** — full updated state (same shape as GET).
-
----
+Upserts any combination of profile / diet plan / workout plan / schedule. All fields are optional — only provided fields are written. Returns full updated state.
 
 ### `POST /api/log-completion`
 Logs a workout or diet session and runs the full gamification pipeline.
 
-**Request body**
-```json
-{ "userId": "user_123", "type": "workout", "notes": "Great session" }
-```
+**Body** `{ userId, type: "workout"|"diet", notes? }`
 
-**Response 200**
-```json
-{
-  "xpGained": 85,
-  "totalXp": 835,
-  "streak": 6,
-  "level": 2,
-  "leveledUp": false,
-  "xpToNextLevel": 165,
-  "message": "6-day streak! You're unstoppable. Keep it going.",
-  "newAchievements": [{ "name": "Week Warrior", "description": "...", "xpBonus": 150 }],
-  "reminders": []
-}
-```
-**Response 400** — `userId` or `type` missing.
-
----
+**Response** `{ xpGained, totalXp, streak, level, leveledUp, xpToNextLevel, message, newAchievements?, reminders }`
 
 ### `POST /api/normalize`
-Extracts structured profile fields from freeform text using OpenAI.
+Extracts structured profile fields from freeform text using AI.
 
-**Request body**
-```json
-{
-  "input": "I'm 28, want to build muscle, train Mon/Wed/Fri, have dumbbells",
-  "userId": "user_123"
-}
-```
+**Body** `{ input: string, userId? }`
 
-**Response 200**
-```json
-{
-  "extracted": {
-    "profile": { "age": 28, "goal": "build_muscle", "availableDays": ["monday", "wednesday", "friday"], "equipment": ["dumbbells"] }
-  },
-  "rawInput": "I'm 28, want to build muscle...",
-  "confidence": "high",
-  "notes": "Extracted age, goal, 3 training days, equipment. Name not found."
-}
-```
-**Response 400** — `input` missing.
-
----
+**Response** `{ extracted: { profile: {...} }, rawInput, confidence: "high"|"medium"|"low", notes }`
 
 ### `POST /api/generate-plan`
-Generates a personalized workout or diet plan using OpenAI, based on the user's profile.
+AI-generates a workout or diet plan from the user's stored profile.
 
-**Request body**
-```json
-{ "userId": "user_123", "type": "workout", "confirmed": true }
-```
-- `type`: `"workout"` or `"diet"` (required)
-- `confirmed`: `true` to save in confirm mode
+**Body** `{ userId, type: "workout"|"diet", confirmed? }`
 
-**Response 200**
-```json
-{
-  "plan": {
-    "sessions": [{ "day": "monday", "name": "Push Day", "durationMin": 60, "exercises": [...] }],
-    "notes": "..."
-  },
-  "saved": true
-}
-```
-In confirm mode without `confirmed: true`:
-```json
-{ "plan": {...}, "saved": false, "requiresConfirmation": true }
-```
-**Response 404** — user not found.
-**Response 500** — AI returned invalid JSON.
-
----
+**Response** `{ plan, saved: boolean, requiresConfirmation? }` — in confirm mode without `confirmed: true`, `saved` is false.
 
 ### `POST /api/schedule-events`
-Generates a calendar of events using OpenAI and appends them to the user's schedule.
+AI-generates calendar events and appends them to the user's schedule.
 
-**Request body**
-```json
-{
-  "userId": "user_123",
-  "startDate": "2026-06-01",
-  "durationDays": 30,
-  "description": "3 workouts per week",
-  "confirmed": true
-}
-```
-All fields except `userId` are optional (defaults: today, 30 days, auto-description).
+**Body** `{ userId, startDate?, durationDays?, description?, confirmed? }`
 
-**Response 200**
-```json
-{
-  "events": [{ "title": "Push Day", "date": "2026-06-02", "time": "07:00", "type": "workout", "durationMin": 60 }],
-  "count": 12,
-  "saved": true,
-  "startDate": "2026-06-01",
-  "durationDays": 30
-}
-```
-
----
+**Response** `{ events, count, saved, startDate, durationDays, requiresConfirmation? }`
 
 ### `DELETE /api/schedule-events/:userId`
-Clears all scheduled events for a user.
-
-**Response 200** `{ "success": true }`
-
----
+Clears all scheduled events. Returns `{ success: true }`.
 
 ### `GET /api/export/:userId`
-Exports the user's full fitness report.
-
-**Query params**
-- `format`: `json` (default), `csv`, or `html`
-
-**Response 200** — Content-Disposition attachment header set. JSON body, CSV text, or HTML document.
-**Response 400** — invalid format.
-**Response 404** — user not found.
-
----
+Exports a full fitness report. Query param `format=json|csv|html` (default json). Sets `Content-Disposition` attachment header. **404** if user not found, **400** if invalid format.
 
 ### `GET /api/progress/:userId/history`
-Returns the paginated completion event history for a user.
+Returns paginated completion history.
 
-**Query params**
+**Query params:**
 | Param | Default | Notes |
 |-------|---------|-------|
-| `page` | `1` | Page number (1-indexed, clamped to totalPages) |
-| `limit` | `20` | Entries per page (max 100) |
-| `type` | (all) | Filter: `workout` or `diet` |
-| `sort` | `desc` | Sort order: `desc` (newest first) or `asc` (oldest first) |
+| `page` | `1` | 1-indexed; clamped to `totalPages` |
+| `limit` | `20` | Max 100; invalid values fall back to 20 |
+| `type` | all | `workout` or `diet` — **400** on other values |
+| `sort` | `desc` | `desc` = newest first, `asc` = oldest first — **400** on other values |
 
-**Response 200**
+**Response:**
 ```json
 {
   "userId": "user_123",
-  "history": [
-    { "type": "workout", "completedAt": "2026-05-01T07:00:00Z", "xpGained": 85, "notes": "..." }
-  ],
-  "pagination": {
-    "page": 1, "limit": 20, "total": 47, "totalPages": 3,
-    "hasNext": true, "hasPrev": false
-  },
-  "summary": {
-    "workoutLogs": 30, "dietLogs": 17, "totalLogs": 47, "filteredTotal": 47
-  }
+  "history": [{ "type": "workout", "completedAt": "2026-05-01T07:00:00Z", "xpGained": 85, "notes": "..." }],
+  "pagination": { "page": 1, "limit": 20, "total": 47, "totalPages": 3, "hasNext": true, "hasPrev": false },
+  "summary": { "workoutLogs": 30, "dietLogs": 17, "totalLogs": 47, "filteredTotal": 30 }
 }
 ```
-`summary` always reflects unfiltered totals. `filteredTotal` reflects the count after type filter is applied.
+`summary` always shows unfiltered lifetime totals. `filteredTotal` reflects count after type filter.
 
-**Response 400** — invalid `type` or `sort` value.
-**Response 404** — no progress record for user.
-
----
+**404** if no progress record found.
 
 ### `PATCH /api/progress/:userId/reminders/read`
-Marks reminders as read so they no longer appear in `GET /state`.
+Marks reminders as read.
 
-**Request body**
-```json
-{ "ids": ["reminder_id_1"] }
-```
-Omit `ids` to mark all reminders read.
+**Body** `{ ids?: string[] }` — omit `ids` to mark all read.
 
-**Response 200** `{ "success": true, "markedRead": ["reminder_id_1"] }`
+**Response** `{ success: true, markedRead: [...] }`
 
----
-
-### `GET /api/openapi.json`
-Returns the OpenAPI 3.1 spec as JSON. `Access-Control-Allow-Origin: *` header set for ChatGPT import.
-
-### `GET /api/openapi.yaml`
-Returns the OpenAPI 3.1 spec as YAML. Same CORS header.
-
----
+### `GET /api/openapi.json` / `GET /api/openapi.yaml`
+Returns the OpenAPI 3.1 spec. Both endpoints set `Access-Control-Allow-Origin: *` for ChatGPT import.
 
 ### `GET /api/system-prompt`
-Returns ready-to-paste system prompts and configuration for both AI integrations.
+Returns ready-to-paste system prompts and configuration for all three AI integrations (ChatGPT, Claude, GitHub Copilot). See section 9 for details.
 
-**Response 200**
-```json
-{
-  "mcp_endpoint": "/api/mcp",
-  "chatgpt": { "prompt": "You are a fitness coach AI..." },
-  "claude_mcp": { "prompt": "You are a fitness coach AI..." },
-  "claude_desktop_config": { "mcpServers": { "fitness": { "url": "..." } } }
-}
-```
+### `POST /api/mcp`
+MCP JSON-RPC endpoint (StreamableHTTP transport). Returns SSE. See section 8 for tools.
 
 ---
 
 ## 8. MCP Tools Reference
 
-The MCP server at `POST /api/mcp` implements the Model Context Protocol (StreamableHTTP transport). Claude sends JSON-RPC requests; responses are Server-Sent Events (SSE).
+The MCP server at `POST /api/mcp` implements the Model Context Protocol (StreamableHTTP). Claude and GitHub Copilot send JSON-RPC requests; responses are Server-Sent Events (SSE). All 8 tools are discoverable via `tools/list`.
 
-**Protocol**
-```
+**Protocol example:**
+```http
 POST /api/mcp
 Content-Type: application/json
 Accept: application/json, text/event-stream
@@ -601,84 +429,103 @@ Accept: application/json, text/event-stream
 { "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} }
 ```
 
----
-
 ### `get_state`
-Retrieves the complete state for a user.
-
-**Input** `{ userId: string }`
-**Output** — full state object (profile, dietPlan, workoutPlan, schedule, progress).
-
----
+Full user state in one call.
+**Input** `{ userId }` | **Output** — full state object.
 
 ### `save_state`
-Saves any combination of profile, diet plan, workout plan, and schedule.
-
-**Input**
-```json
-{
-  "userId": "string",
-  "profile": { ... },
-  "dietPlan": { ... },
-  "workoutPlan": { ... },
-  "schedule": { ... }
-}
-```
-**Output** `{ success: true, state: { ... } }`
-
----
+Upsert any combination of profile, diet plan, workout plan, schedule.
+**Input** `{ userId, profile?, dietPlan?, workoutPlan?, schedule? }` | **Output** `{ success, userId, updatedAt }`.
 
 ### `log_completion`
-Logs a workout or diet session and returns gamification results.
-
-**Input** `{ userId: string, type: "workout"|"diet", notes?: string }`
-**Output** — xpGained, totalXp, streak, level, leveledUp, newAchievements, message.
-
----
+Log a workout or diet session; runs full gamification pipeline.
+**Input** `{ userId, type: "workout"|"diet", notes? }` | **Output** — xpGained, totalXp, streak, level, leveledUp, newAchievements, message.
 
 ### `normalize_user_input`
-Extracts structured profile data from freeform text.
-
-**Input** `{ input: string, userId?: string }`
-**Output** — extracted profile fields, confidence rating, notes.
-
----
+Parse freeform text → structured profile patch.
+**Input** `{ input, userId? }` | **Output** — extracted profile fields, confidence, notes.
 
 ### `generate_plan`
-Generates a workout or diet plan using AI.
-
-**Input** `{ userId: string, type: "workout"|"diet", confirmed?: boolean }`
-**Output** — plan object, saved flag, requiresConfirmation flag (in confirm mode).
-
----
+AI-generate a workout or diet plan.
+**Input** `{ userId, type: "diet"|"workout", confirmed? }` | **Output** — plan, saved, requiresConfirmation?.
 
 ### `schedule_events`
-Generates and saves a calendar of fitness events.
+AI-generate and save calendar events.
+**Input** `{ userId, description?, startDate?, durationDays?, confirmed? }` | **Output** — events, count, saved, requiresConfirmation?.
 
-**Input** `{ userId: string, startDate?: string, durationDays?: number, description?: string, confirmed?: boolean }`
-**Output** — events array, count, saved flag.
-
----
-
-### `export_report`
-Returns a fitness report and a download URL.
-
-**Input** `{ userId: string, format?: "json"|"csv"|"html" }`
-**Output**
+### `get_history`
+Paginated completion history with optional type filter and sort order.
+**Input** `{ userId, page?, limit?, type?: "workout"|"diet", sort?: "asc"|"desc" }` | **Output:**
 ```json
 {
   "userId": "...",
-  "downloadUrl": "/api/export/user_123?format=json",
-  "profile": { ... },
-  "progress": { "xp": 750, "level": 2, "streak": 5, "workoutLogs": 10, "dietLogs": 5, "totalLogs": 15 },
-  "achievements": [...],
-  "recentHistory": [...]
+  "history": [...],
+  "pagination": { "page": 1, "limit": 20, "total": 47, "totalPages": 3, "hasNext": true, "hasPrev": false },
+  "summary": { "workoutLogs": 30, "dietLogs": 17, "totalLogs": 47, "filteredTotal": 30 }
 }
 ```
 
+### `export_report`
+Fitness report + download URL.
+**Input** `{ userId, format?: "json"|"csv"|"html" }` | **Output** — full report object + `downloadUrl`.
+
 ---
 
-## 9. Gamification System
+## 9. AI Client Integrations
+
+All configuration is available at `GET /api/system-prompt`.
+
+### ChatGPT (Custom GPT Actions)
+
+1. Create a Custom GPT at [chat.openai.com](https://chat.openai.com).
+2. Go to **Configure → Actions → Add action**.
+3. Set the schema URL to: `https://<your-domain>/api/openapi.json`
+4. ChatGPT auto-discovers all 10 REST endpoints.
+5. Paste the `chatgpt.prompt` value from `GET /api/system-prompt` as your GPT's System Prompt.
+
+### Claude (MCP via Desktop App or API)
+
+**Claude Desktop config** — add to:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "fitness-agent": {
+      "url": "https://<your-domain>/api/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+Claude auto-discovers all 8 MCP tools via `tools/list`. Use the `claude.prompt` from `GET /api/system-prompt` as your project system prompt.
+
+### GitHub Copilot (VS Code MCP)
+
+Two steps:
+
+**Step 1 — VS Code MCP config** (`.vscode/mcp.json` is already in this repo, pointing to `localhost:80` for local dev):
+```json
+{
+  "servers": {
+    "fitness-agent": {
+      "url": "https://<your-domain>/api/mcp",
+      "type": "sse"
+    }
+  }
+}
+```
+Update the URL to your deployed domain for production use.
+
+**Step 2 — Workspace context** — `.github/copilot-instructions.md` is already in this repo. Copilot Chat automatically reads it as workspace context, giving it full knowledge of the API surface, tools, schema, and conventions without any additional setup.
+
+After connecting, Copilot Chat can call all 8 MCP tools (same as Claude). The `github_copilot.vscode_mcp_config` field in `GET /api/system-prompt` returns the config JSON ready to copy.
+
+---
+
+## 10. Gamification System
 
 Defined in `artifacts/api-server/src/lib/gamification.ts`.
 
@@ -694,15 +541,16 @@ Defined in `artifacts/api-server/src/lib/gamification.ts`.
 
 ### XP Calculation (per log)
 ```
-xpGained = baseXp + min(streak - 1, MAX_STREAK_BONUS_DAYS) * XP_STREAK_BONUS_PER_DAY
+xpGained = baseXp
+         + min(streak - 1, MAX_STREAK_BONUS_DAYS) × XP_STREAK_BONUS_PER_DAY
          + achievement.xpBonus (for each newly unlocked achievement)
          + XP_WEEKLY_BONUS (if current log is the 5th unique active day this week)
 ```
 
 ### Streak Rules
 - **Increment** — last log was 20–48 hours ago (yesterday window)
-- **Hold** — last log was within the past 20 hours (same day)
-- **Reset** — last log was more than 48 hours ago or null (first log → streak = 1)
+- **Hold** — last log was within the past 20 hours (same day, no double-counting)
+- **Reset to 1** — last log was more than 48 hours ago or null (first ever log)
 
 ### Level Formula
 ```typescript
@@ -727,70 +575,75 @@ xpToNextLevel = XP_PER_LEVEL - (totalXp % XP_PER_LEVEL)
 | `logs_100` | Unstoppable | 100 total logs | 750 |
 
 ### History Cap
-The completion history is capped at the last 100 entries (`.slice(-100)`). The full count is reflected in achievement checks before trimming.
+The completion history is capped at the last 100 entries (`.slice(-100)`). Achievements are checked before trimming.
 
 ---
 
-## 10. OpenAPI Spec
+## 11. OpenAPI Spec
 
-The spec lives at `lib/api-spec/openapi.yaml`. It is served live by the API (no build step needed) at:
-- `GET /api/openapi.json` — parsed to JSON
-- `GET /api/openapi.yaml` — raw YAML
+**Location:** `lib/api-spec/openapi.yaml`
 
-**Paths defined** (8):
-`/healthz`, `/state/{userId}`, `/log-completion`, `/normalize`, `/generate-plan`, `/schedule-events`, `/export/{userId}`, `/mcp`
+**Served at:**
+- `GET /api/openapi.json` — parsed to JSON, CORS open
+- `GET /api/openapi.yaml` — raw YAML, CORS open
 
-**Schemas defined**: `FitnessState`, `UserProfile`, `DietPlan`, `WorkoutPlan`, `Schedule`, `Progress`, `CompletionEvent`, `Achievement`, `LogCompletionResponse`, `GeneratePlanResponse`, `ScheduleEventsResponse`, `NormalizeResponse`, `ExportResponse`
+**Paths defined (10):**
+`/healthz`, `/state/{userId}`, `/log-completion`, `/normalize`, `/generate-plan`, `/schedule-events`, `/export/{userId}`, `/progress/{userId}/history`, `/progress/{userId}/reminders/read`, `/system-prompt`, `/mcp`
 
-To import into ChatGPT:
-1. Create a Custom GPT
-2. Add an Action with schema URL: `https://<your-domain>/api/openapi.json`
-3. ChatGPT will auto-discover all endpoints
+**Tags:** `health`, `state`, `tools`, `history`, `mcp`
+
+**Schemas defined (16):**
+`HealthStatus`, `ErrorResponse`, `UserProfile`, `Meal`, `Macros`, `DietPlan`, `WorkoutSession`, `WorkoutPlan`, `ScheduleEvent`, `Schedule`, `Achievement`, `Reminder`, `CompletionEvent`, `Progress`, `FitnessState`, `SaveStateRequest`, `LogCompletionRequest`, `LogCompletionResponse`, `NormalizeRequest`, `NormalizeResponse`, `GeneratePlanRequest`, `GeneratePlanResponse`, `ScheduleEventsRequest`, `ScheduleEventsResponse`, `HistoryPagination`, `HistorySummary`, `HistoryResponse`
+
+**Import into ChatGPT:**
+1. Create a Custom GPT → Configure → Actions → Add action
+2. Set schema URL: `https://<your-domain>/api/openapi.json`
+3. ChatGPT auto-discovers all endpoints
 
 ---
 
-## 11. Test Suite
+## 12. Test Suite
 
 Run: `pnpm --filter @workspace/api-server test`
 
-**Coverage: 19 test files, 305+ tests, all passing.**
+**Coverage: 20 test files, 320+ tests, all passing.**
 
 ### Strategy
-- **Unit tests** — pure function tests with no mocking (gamification logic)
-- **Integration tests** — real PostgreSQL database, mocked OpenAI, mocked node-cron, supertest HTTP client
+- **Unit tests** — pure function tests, no mocking
+- **Integration tests** — real PostgreSQL, mocked OpenAI + node-cron, supertest HTTP
 - **End-to-end tests** — full user journeys across multiple endpoints
 
 ### Mocking
-- `node-cron` — mocked via `vi.mock` (hoisted) to prevent background jobs during tests
-- `@workspace/integrations-openai-ai-server` — mocked OpenAI client with `vi.fn()`, per-test `mockResolvedValueOnce` for AI responses
-- Database — real PostgreSQL; each test uses a unique `userId` like `test_<suite>_<random>`, cleaned up in `afterEach`
+- `node-cron` — `vi.mock` (hoisted) prevents background jobs during tests
+- `@workspace/integrations-openai-ai-server` — per-test `mockResolvedValueOnce` for AI responses
+- Database — real PostgreSQL; unique `userId` per test, cleaned up in `afterEach`
 
 ### Test Files
 | File | What it covers |
 |------|---------------|
-| `unit/gamification.test.ts` | Core functions: computeLevel, isConsecutiveDay, isSameDay, computeNewStreak, checkNewAchievements, checkWeeklyBonus, reinforcementMessage |
+| `unit/gamification.test.ts` | Core functions: computeLevel, streak computation, checkNewAchievements, checkWeeklyBonus, reinforcementMessage |
 | `unit/gamification.extended.test.ts` | All 12 achievement unlock paths, XP constants, ACHIEVEMENT_DEFS validation, boundary conditions |
-| `integration/health.test.ts` | /healthz, /system-prompt structure |
-| `integration/state.test.ts` | GET 200/404, PUT create/update, saves for all sub-documents |
+| `integration/health.test.ts` | /healthz, /system-prompt (all three AI sections present) |
+| `integration/state.test.ts` | GET 200/404, PUT create/update |
 | `integration/state.extended.test.ts` | All 4 goals, both modes, 13 partial-update scenarios, array fields, type coercions |
 | `integration/logCompletion.test.ts` | XP fields, streak=1 on first log, first_workout achievement, accumulation |
-| `integration/logCompletion.extended.test.ts` | Streak bonus cap, same-day idempotency, DB-seeded streak increment/reset, weekly bonus trigger |
-| `integration/normalize.test.ts` | /normalize basic flow, rawInput echo, confidence enum, single OpenAI call |
+| `integration/logCompletion.extended.test.ts` | Streak bonus cap, same-day idempotency, weekly bonus trigger |
+| `integration/normalize.test.ts` | /normalize basic flow, rawInput echo, confidence enum |
 | `integration/generatePlan.test.ts` | Workout/diet plans, state persistence, confirm mode preview vs save |
-| `integration/generatePlan.extended.test.ts` | Plan overwrite, AI error handling (invalid JSON/array/empty), profile edge cases |
+| `integration/generatePlan.extended.test.ts` | Plan overwrite, AI error handling, profile edge cases |
 | `integration/scheduleEvents.test.ts` | Event generation, accumulation, confirm mode, DELETE |
 | `integration/scheduleEvents.extended.test.ts` | Durations (1/7/90 days), startDate, AI errors, DELETE round-trips |
 | `integration/export.test.ts` | JSON/CSV/HTML formats, XP/achievement values, content-type headers |
 | `integration/progress.test.ts` | PATCH reminders/read, 404, mark-by-id, unread filter in state |
-| `integration/progressHistory.test.ts` | Pagination (page/limit/clamping), type filter, sort order, summary accuracy, empty history |
-| `integration/openapi.test.ts` | /openapi.json (8 paths, 3 schemas), /openapi.yaml (CORS, content, equivalence) |
-| `integration/mcp.test.ts` | MCP protocol, tools/list (7 tools + schemas), 5 tool calls |
-| `integration/mcp.extended.test.ts` | normalize/schedule via MCP, full-data get_state, export formats, save_state with plans, inputSchema validation |
+| `integration/progressHistory.test.ts` | Pagination, type filter, sort order, summary accuracy, empty history, combined filters |
+| `integration/openapi.test.ts` | /openapi.json (10 paths, schemas), /openapi.yaml (CORS, content, JSON/YAML equivalence) |
+| `integration/mcp.test.ts` | MCP protocol, tools/list (8 tools + inputSchemas), 5 core tool calls |
+| `integration/mcp.extended.test.ts` | normalize/schedule via MCP, full-data get_state, export formats, save_state, get_history tool |
 | `integration/workflows.test.ts` | 5 end-to-end journeys (onboarding, confirm mode plans, confirm mode schedule, XP accumulation, reminders) |
 
 ---
 
-## 12. Configuration & Environment
+## 13. Configuration & Environment
 
 ### Environment Variables
 | Variable | Required | Description |
@@ -800,11 +653,9 @@ Run: `pnpm --filter @workspace/api-server test`
 | `PORT` | Auto | Assigned by Replit proxy (default 8080) |
 
 ### OpenAI Integration
-The server uses `@workspace/integrations-openai-ai-server` which wraps the Replit AI Integrations proxy. No `OPENAI_API_KEY` is needed in the Replit environment — the proxy authenticates automatically.
+Uses `@workspace/integrations-openai-ai-server` — Replit AI Integrations proxy. No `OPENAI_API_KEY` needed in Replit.
 
-Model used: `gpt-5-mini` (all AI calls — normalize, generate-plan, schedule-events).
-
-`response_format: { type: "json_object" }` is set on all calls that require structured output.
+Model: `gpt-5-mini` with `response_format: { type: "json_object" }` on all AI calls.
 
 ### node-cron Schedule Strings
 | Job | Cron expression |
@@ -814,10 +665,8 @@ Model used: `gpt-5-mini` (all AI calls — normalize, generate-plan, schedule-ev
 | Monthly plan renewal | `0 9 1 * *` |
 
 ### Build System
-The API server is bundled with esbuild (`build.mjs`). The bundle:
-- Targets Node.js ESM
-- Bundles all workspace package dependencies
-- Uses `esbuild-plugin-pino` for pino's dynamic requires
-- Outputs to `dist/index.mjs`
+esbuild (`build.mjs`): bundles to `dist/index.mjs`, targets Node.js ESM, uses `esbuild-plugin-pino`. Tests run TypeScript source directly via Vitest.
 
-In production the built bundle is run; in tests Vitest runs the TypeScript source directly.
+### Key Path Convention
+`process.cwd()` in both production and tests = `artifacts/api-server/`.
+OpenAI YAML path: `resolve(process.cwd(), "../../lib/api-spec/openapi.yaml")`.

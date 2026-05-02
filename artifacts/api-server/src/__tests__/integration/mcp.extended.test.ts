@@ -19,6 +19,7 @@ import {
 } from "../helpers.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { db, progress, dietPlans, workoutPlans, schedules } from "@workspace/db";
+import { XP_WORKOUT, XP_DIET } from "../../lib/gamification.js";
 
 const request = supertest(app);
 const mockCreate = vi.mocked(openai.chat.completions.create);
@@ -277,6 +278,146 @@ describe("MCP tools/call — save_state extended", () => {
     } finally {
       await cleanupTestUser(newUserId);
     }
+  });
+});
+
+describe("MCP tools/call — get_history", () => {
+  beforeEach(async () => {
+    const mixed = [
+      ...Array.from({ length: 15 }, (_, i) => ({
+        type: "workout" as const,
+        completedAt: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
+        xpGained: XP_WORKOUT,
+        notes: `Workout ${i + 1}`,
+      })),
+      ...Array.from({ length: 10 }, (_, i) => ({
+        type: "diet" as const,
+        completedAt: new Date(Date.now() - (i + 15) * 24 * 60 * 60 * 1000).toISOString(),
+        xpGained: XP_DIET,
+      })),
+    ];
+    await db.insert(progress).values({
+      userId,
+      xp: 1050,
+      streak: 7,
+      level: 3,
+      history: mixed,
+      achievements: [],
+      reminders: [],
+      lastLoggedAt: new Date(),
+      updatedAt: new Date(),
+    });
+  });
+
+  it("returns 200 with history, pagination, and summary", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      history: unknown[];
+      pagination: { total: number; page: number; limit: number };
+      summary: { totalLogs: number };
+    };
+    expect(Array.isArray(content.history)).toBe(true);
+    expect(content.pagination).toHaveProperty("total");
+    expect(content.summary.totalLogs).toBe(25);
+  });
+
+  it("returns error for unknown user", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId: "unknown_hist_mcp_xyz" } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[]; isError?: boolean } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as { error: string };
+    expect(content.error).toBeTruthy();
+  });
+
+  it("respects limit parameter", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, limit: 5 } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      history: unknown[];
+      pagination: { limit: number };
+    };
+    expect(content.history.length).toBeLessThanOrEqual(5);
+    expect(content.pagination.limit).toBe(5);
+  });
+
+  it("filters by type=workout", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, type: "workout", limit: 50 } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      history: { type: string }[];
+      pagination: { total: number };
+    };
+    expect(content.history.every((h) => h.type === "workout")).toBe(true);
+    expect(content.pagination.total).toBe(15);
+  });
+
+  it("filters by type=diet", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, type: "diet", limit: 50 } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      history: { type: string }[];
+      pagination: { total: number };
+    };
+    expect(content.history.every((h) => h.type === "diet")).toBe(true);
+    expect(content.pagination.total).toBe(10);
+  });
+
+  it("summary.workoutLogs and dietLogs are always unfiltered", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, type: "workout" } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      summary: { workoutLogs: number; dietLogs: number; totalLogs: number };
+    };
+    expect(content.summary.workoutLogs).toBe(15);
+    expect(content.summary.dietLogs).toBe(10);
+    expect(content.summary.totalLogs).toBe(25);
+  });
+
+  it("sort=desc returns newest first", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, sort: "desc", limit: 5 } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      history: { completedAt: string }[];
+    };
+    const dates = content.history.map((h) => new Date(h.completedAt).getTime());
+    for (let i = 1; i < dates.length; i++) {
+      expect(dates[i - 1]).toBeGreaterThanOrEqual(dates[i]);
+    }
+  });
+
+  it("sort=asc returns oldest first", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, sort: "asc", limit: 5 } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      history: { completedAt: string }[];
+    };
+    const dates = content.history.map((h) => new Date(h.completedAt).getTime());
+    for (let i = 1; i < dates.length; i++) {
+      expect(dates[i - 1]).toBeLessThanOrEqual(dates[i]);
+    }
+  });
+
+  it("pagination.hasNext is true when there are more pages", async () => {
+    const res = await mcpCall("tools/call", { name: "get_history", arguments: { userId, limit: 10, page: 1 } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as {
+      pagination: { hasNext: boolean; hasPrev: boolean; totalPages: number };
+    };
+    expect(content.pagination.hasNext).toBe(true);
+    expect(content.pagination.hasPrev).toBe(false);
+    expect(content.pagination.totalPages).toBe(3);
+  });
+
+  it("page 2 returns different entries than page 1", async () => {
+    const p1 = await mcpCall("tools/call", { name: "get_history", arguments: { userId, limit: 10, page: 1 } });
+    const p2 = await mcpCall("tools/call", { name: "get_history", arguments: { userId, limit: 10, page: 2 } });
+    const d1 = parseSseData(p1.text) as { result: { content: { text: string }[] } };
+    const d2 = parseSseData(p2.text) as { result: { content: { text: string }[] } };
+    const c1 = JSON.parse(d1?.result?.content?.[0]?.text ?? "{}") as { history: { completedAt: string }[] };
+    const c2 = JSON.parse(d2?.result?.content?.[0]?.text ?? "{}") as { history: { completedAt: string }[] };
+    const dates1 = c1.history.map((h) => h.completedAt);
+    const dates2 = c2.history.map((h) => h.completedAt);
+    expect(dates1.some((d) => dates2.includes(d))).toBe(false);
   });
 });
 
