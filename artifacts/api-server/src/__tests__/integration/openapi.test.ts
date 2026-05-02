@@ -103,6 +103,53 @@ describe("GET /api/openapi.json", () => {
     const res = await request.get("/api/openapi.json");
     expect(res.body.components.schemas).toHaveProperty("GeneratePlanResponse");
   });
+
+  it("ExportReportResponse schema is defined", async () => {
+    const res = await request.get("/api/openapi.json");
+    expect(res.body.components.schemas).toHaveProperty("ExportReportResponse");
+  });
+
+  it("ExportReportResponse has downloadUrl and embedUrl properties", async () => {
+    const res = await request.get("/api/openapi.json");
+    const schema = res.body.components.schemas.ExportReportResponse as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(schema.properties).toHaveProperty("downloadUrl");
+    expect(schema.properties).toHaveProperty("embedUrl");
+    expect(schema.required).toContain("downloadUrl");
+    expect(schema.required).not.toContain("embedUrl");
+  });
+
+  it("ExportReportResponse has required top-level fields", async () => {
+    const res = await request.get("/api/openapi.json");
+    const schema = res.body.components.schemas.ExportReportResponse as { required: string[] };
+    for (const field of ["exportedAt", "userId", "profile", "progress", "achievements", "recentHistory"]) {
+      expect(schema.required).toContain(field);
+    }
+  });
+
+  it("/export/{userId} has embed query parameter documented", async () => {
+    const res = await request.get("/api/openapi.json");
+    const params = res.body.paths["/export/{userId}"].get.parameters as { name: string }[];
+    const names = params.map((p) => p.name);
+    expect(names).toContain("format");
+    expect(names).toContain("embed");
+  });
+
+  it("/export/{userId} JSON 200 response references ExportReportResponse schema", async () => {
+    const res = await request.get("/api/openapi.json");
+    const jsonSchema = res.body.paths["/export/{userId}"].get.responses["200"].content["application/json"].schema as {
+      $ref?: string;
+    };
+    expect(jsonSchema.$ref).toContain("ExportReportResponse");
+  });
+
+  it("ExportReportProfile and ExportReportProgress sub-schemas are defined", async () => {
+    const res = await request.get("/api/openapi.json");
+    expect(res.body.components.schemas).toHaveProperty("ExportReportProfile");
+    expect(res.body.components.schemas).toHaveProperty("ExportReportProgress");
+  });
 });
 
 describe("GET /api/openapi.yaml", () => {

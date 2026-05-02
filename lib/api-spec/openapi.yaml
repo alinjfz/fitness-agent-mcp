@@ -203,7 +203,13 @@ paths:
       description: |
         Returns a formatted report with profile, progress, achievements, history, diet plan, and workout plan.
         Supports json (default), csv, and html formats.
-        The html format is suitable for sharing or printing.
+
+        The json response includes a `downloadUrl` for every format and, when `format=html`, an additional
+        `embedUrl` with `embed=true` appended — use `embedUrl` to open the report inline in a browser or
+        iframe, and `downloadUrl` to trigger a file download.
+
+        Pass `embed=true` directly on an html request to strip the Content-Disposition header so the page
+        loads inline instead of downloading.
       parameters:
         - name: userId
           in: path
@@ -217,13 +223,23 @@ paths:
             type: string
             enum: [json, csv, html]
             default: json
+          description: Output format. Defaults to json.
+        - name: embed
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            HTML format only. When true, omits the Content-Disposition attachment header so the report
+            renders inline in a browser tab or iframe rather than triggering a file download.
       responses:
         "200":
           description: Report in requested format
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/ExportReportResponse"
             text/csv:
               schema:
                 type: string
@@ -890,3 +906,107 @@ components:
         summary:
           $ref: "#/components/schemas/HistorySummary"
       required: [userId, history, pagination, summary]
+
+    ExportReportProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        goal:
+          type: string
+        age:
+          type: integer
+          nullable: true
+        weightKg:
+          type: number
+          nullable: true
+        mode:
+          type: string
+          enum: [auto, confirm]
+      required: [name, goal, mode]
+
+    ExportReportProgress:
+      type: object
+      properties:
+        xp:
+          type: integer
+        streak:
+          type: integer
+        level:
+          type: integer
+        xpToNextLevel:
+          type: integer
+        workoutLogs:
+          type: integer
+        dietLogs:
+          type: integer
+        totalLogs:
+          type: integer
+      required: [xp, streak, level, xpToNextLevel, workoutLogs, dietLogs, totalLogs]
+
+    ExportReportResponse:
+      type: object
+      description: |
+        JSON fitness report returned by GET /export/{userId}?format=json (the default).
+        Also returned by csv and html formats wrapped in their respective content types.
+        The `embedUrl` field is only present when format=html — use it to open the interactive
+        paginated report inline; use `downloadUrl` to trigger a file download.
+      properties:
+        exportedAt:
+          type: string
+          format: date-time
+        userId:
+          type: string
+        profile:
+          $ref: "#/components/schemas/ExportReportProfile"
+        progress:
+          $ref: "#/components/schemas/ExportReportProgress"
+        achievements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+              earnedAt:
+                type: string
+                format: date-time
+            required: [name, description, earnedAt]
+        dietPlan:
+          type: object
+          nullable: true
+          properties:
+            dailyCalories:
+              type: integer
+            macros:
+              type: object
+        workoutPlan:
+          type: object
+          nullable: true
+          properties:
+            sessionCount:
+              type: integer
+        schedule:
+          type: object
+          nullable: true
+          properties:
+            eventCount:
+              type: integer
+        recentHistory:
+          type: array
+          description: Last 10 completion events
+          items:
+            $ref: "#/components/schemas/CompletionEvent"
+        downloadUrl:
+          type: string
+          description: Relative URL that triggers a file download of this report
+        embedUrl:
+          type: string
+          nullable: true
+          description: |
+            Relative URL that serves the HTML report inline (no Content-Disposition header).
+            Only present when format=html. Use this URL to embed the report in an iframe
+            or open it directly in a browser tab.
+      required: [exportedAt, userId, profile, progress, achievements, recentHistory, downloadUrl]

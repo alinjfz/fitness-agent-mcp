@@ -636,8 +636,31 @@ The completion history is capped at the last 100 entries (`.slice(-100)`). Achie
 
 **Tags:** `health`, `state`, `tools`, `history`, `mcp`
 
-**Schemas defined (27):**
-`HealthStatus`, `ErrorResponse`, `UserProfile`, `Meal`, `Macros`, `DietPlan`, `WorkoutSession`, `WorkoutPlan`, `ScheduleEvent`, `Schedule`, `Achievement`, `Reminder`, `CompletionEvent`, `Progress`, `FitnessState`, `SaveStateRequest`, `LogCompletionRequest`, `LogCompletionResponse`, `NormalizeRequest`, `NormalizeResponse`, `GeneratePlanRequest`, `GeneratePlanResponse`, `ScheduleEventsRequest`, `ScheduleEventsResponse`, `HistoryPagination`, `HistorySummary`, `HistoryResponse`
+**Schemas defined (30):**
+`HealthStatus`, `ErrorResponse`, `UserProfile`, `Meal`, `Macros`, `DietPlan`, `WorkoutSession`, `WorkoutPlan`, `ScheduleEvent`, `Schedule`, `Achievement`, `Reminder`, `CompletionEvent`, `Progress`, `FitnessState`, `SaveStateRequest`, `LogCompletionRequest`, `LogCompletionResponse`, `NormalizeRequest`, `NormalizeResponse`, `GeneratePlanRequest`, `GeneratePlanResponse`, `ScheduleEventsRequest`, `ScheduleEventsResponse`, `HistoryPagination`, `HistorySummary`, `HistoryResponse`, `ExportReportProfile`, `ExportReportProgress`, `ExportReportResponse`
+
+**`/export/{userId}` — query parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `format` | `json\|csv\|html` | `json` | Output format |
+| `embed` | `boolean` | `false` | HTML only — strips `Content-Disposition` so the report loads inline instead of downloading |
+
+**`ExportReportResponse` schema** (returned for `format=json`):
+
+| Field | Type | Always present | Notes |
+|-------|------|---------------|-------|
+| `exportedAt` | string (date-time) | Yes | |
+| `userId` | string | Yes | |
+| `profile` | `ExportReportProfile` | Yes | name, goal, age, weightKg, mode |
+| `progress` | `ExportReportProgress` | Yes | xp, streak, level, xpToNextLevel, workoutLogs, dietLogs, totalLogs |
+| `achievements` | array | Yes | name, description, earnedAt |
+| `dietPlan` | object \| null | Yes | dailyCalories, macros |
+| `workoutPlan` | object \| null | Yes | sessionCount |
+| `schedule` | object \| null | Yes | eventCount |
+| `recentHistory` | `CompletionEvent[]` | Yes | Last 10 entries |
+| `downloadUrl` | string | Yes | Relative URL — triggers file download |
+| `embedUrl` | string \| null | HTML format only | Relative URL with `embed=true` — opens report inline |
 
 **Import into ChatGPT:**
 1. Create a Custom GPT → Configure → Actions → Add action
