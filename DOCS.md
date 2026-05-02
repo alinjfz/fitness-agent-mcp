@@ -503,8 +503,15 @@ Paginated completion history with optional type filter and sort order.
 ```
 
 ### `export_report`
-Fitness report + download URL.
-**Input** `{ userId, format?: "json"|"csv"|"html" }` | **Output** — full report object + `downloadUrl`.
+Fitness report with download and embed URLs.
+**Input** `{ userId, format?: "json"|"csv"|"html" }` | **Output** — full report object plus:
+
+| Field | Present when | Value |
+|-------|-------------|-------|
+| `downloadUrl` | Always | `/api/export/{userId}?format={format}` — triggers a file download |
+| `embedUrl` | `format=html` only | `/api/export/{userId}?format=html&embed=true` — serves the report as an inline page; suitable for iframes or direct links |
+
+When an AI calls `export_report` with `format="html"`, the response contains both URLs. The AI should share `embedUrl` with the user when they want to view the report in a browser tab or embedded panel, and `downloadUrl` when they want to save the file.
 
 ---
 

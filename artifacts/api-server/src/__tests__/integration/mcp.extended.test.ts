@@ -218,6 +218,37 @@ describe("MCP tools/call — export_report formats", () => {
     expect(content.downloadUrl).toContain("format=csv");
   });
 
+  it("html format includes embedUrl pointing to embed=true endpoint", async () => {
+    const res = await mcpCall("tools/call", { name: "export_report", arguments: { userId, format: "html" } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as { downloadUrl: string; embedUrl: string };
+    expect(content.downloadUrl).toContain("format=html");
+    expect(content.embedUrl).toContain(userId);
+    expect(content.embedUrl).toContain("format=html");
+    expect(content.embedUrl).toContain("embed=true");
+  });
+
+  it("json format does not include embedUrl", async () => {
+    const res = await mcpCall("tools/call", { name: "export_report", arguments: { userId, format: "json" } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(content).not.toHaveProperty("embedUrl");
+  });
+
+  it("csv format does not include embedUrl", async () => {
+    const res = await mcpCall("tools/call", { name: "export_report", arguments: { userId, format: "csv" } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(content).not.toHaveProperty("embedUrl");
+  });
+
+  it("default format (json) does not include embedUrl", async () => {
+    const res = await mcpCall("tools/call", { name: "export_report", arguments: { userId } });
+    const data = parseSseData(res.text) as { result: { content: { text: string }[] } };
+    const content = JSON.parse(data?.result?.content?.[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(content).not.toHaveProperty("embedUrl");
+  });
+
   it("report contains correct level", async () => {
     const res = await mcpCall("tools/call", { name: "export_report", arguments: { userId } });
     const data = parseSseData(res.text) as { result: { content: { text: string }[] } };

@@ -345,6 +345,7 @@ function createMcpServer(): McpServer {
         schedule: schedule ? { eventCount: (schedule.events as unknown[]).length } : null,
         recentHistory: history.slice(-10),
         downloadUrl: `/api/export/${userId}?format=${format}`,
+        ...(format === "html" && { embedUrl: `/api/export/${userId}?format=html&embed=true` }),
       };
 
       return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
