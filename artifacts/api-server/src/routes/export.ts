@@ -117,11 +117,8 @@ router.get("/export/:userId", async (req, res) => {
       .map((a) => `<tr><td>${a.name}</td><td>${a.description}</td><td>${a.earnedAt.split("T")[0]}</td><td>+${a.xpBonus} XP</td></tr>`)
       .join("");
 
-    const historyRows = history
-      .slice(-20)
-      .reverse()
-      .map((h) => `<tr><td>${h.type === "workout" ? "💪" : "🥗"} ${h.type}</td><td>${h.completedAt.split("T")[0]}</td><td>+${h.xpGained} XP</td><td>${h.notes ?? ""}</td></tr>`)
-      .join("");
+    const historyJson = JSON.stringify([...history].reverse())
+      .replace(/<\/script>/gi, "<\\/script>");
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -129,7 +126,7 @@ router.get("/export/:userId", async (req, res) => {
 <meta charset="UTF-8">
 <title>Fitness Report — ${profile.name}</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; background: #f9f9f9; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; background: #f9f9f9; }
   h1 { color: #111; border-bottom: 3px solid #0070f3; padding-bottom: 12px; }
   h2 { color: #333; margin-top: 40px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin: 24px 0; }
@@ -142,11 +139,23 @@ router.get("/export/:userId", async (req, res) => {
   tr:last-child td { border-bottom: none; }
   .badge { background: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
   footer { margin-top: 60px; color: #999; font-size: 0.8rem; text-align: center; }
+  .log-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 20px 0 12px; }
+  .log-controls label { font-size: 0.85rem; font-weight: 600; color: #555; margin-right: 4px; }
+  .log-controls select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 8px; background: white; font-size: 0.85rem; cursor: pointer; }
+  .log-controls select:hover { border-color: #0070f3; }
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 16px; border-top: 1px solid #f0f0f0; background: white; }
+  .pagination button { padding: 8px 18px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all 0.15s; }
+  .pagination button:hover:not(:disabled) { background: #0070f3; color: white; border-color: #0070f3; }
+  .pagination button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .pagination #page-info { font-size: 0.85rem; color: #555; min-width: 220px; text-align: center; }
+  .log-header { display: flex; align-items: baseline; gap: 10px; }
+  .log-header h2 { margin: 0; }
+  .log-count { font-size: 0.85rem; color: #888; }
 </style>
 </head>
 <body>
-<h1>🏋️ Fitness Report — ${profile.name}</h1>
-<p>Generated on ${reportDate} &nbsp;|&nbsp; Goal: <strong>${profile.goal.replace("_", " ")}</strong> &nbsp;|&nbsp; Mode: <span class="badge">${profile.mode}</span></p>
+<h1>&#127947; Fitness Report — ${profile.name}</h1>
+<p>Generated on ${reportDate} &nbsp;|&nbsp; Goal: <strong>${profile.goal.replace(/_/g, " ")}</strong> &nbsp;|&nbsp; Mode: <span class="badge">${profile.mode}</span></p>
 
 <h2>Progress</h2>
 <div class="stats">
@@ -164,11 +173,133 @@ ${achievements.length > 0 ? `<h2>Achievements (${achievements.length})</h2>
   ${achievementRows}
 </table>` : ""}
 
-<h2>Recent Activity (last 20)</h2>
-<table>
-  <tr><th>Type</th><th>Date</th><th>XP</th><th>Notes</th></tr>
-  ${historyRows || "<tr><td colspan='4'>No activity yet</td></tr>"}
+<div class="log-header" style="margin-top:40px;">
+  <h2>Activity Log</h2>
+  <span class="log-count">(<span id="filtered-count">${history.length}</span> of ${history.length} entries)</span>
+</div>
+
+<div class="log-controls">
+  <div>
+    <label for="type-filter">Filter:</label>
+    <select id="type-filter">
+      <option value="all">All types</option>
+      <option value="workout">Workout only</option>
+      <option value="diet">Diet only</option>
+    </select>
+  </div>
+  <div>
+    <label for="sort-order">Sort:</label>
+    <select id="sort-order">
+      <option value="desc">Newest first</option>
+      <option value="asc">Oldest first</option>
+    </select>
+  </div>
+  <div>
+    <label for="per-page">Per page:</label>
+    <select id="per-page">
+      <option value="10">10</option>
+      <option value="20" selected>20</option>
+      <option value="50">50</option>
+      <option value="all">All</option>
+    </select>
+  </div>
+</div>
+
+<table id="history-table">
+  <thead><tr><th>Type</th><th>Date</th><th>XP</th><th>Notes</th></tr></thead>
+  <tbody id="history-tbody"><tr><td colspan="4">Loading…</td></tr></tbody>
 </table>
+<div class="pagination">
+  <button id="prev-btn" disabled>&#8592; Previous</button>
+  <span id="page-info"></span>
+  <button id="next-btn" disabled>Next &#8594;</button>
+</div>
+
+<script type="application/json" id="history-data">${historyJson}</script>
+<script>
+(function () {
+  var ALL = JSON.parse(document.getElementById('history-data').textContent);
+  var filtered = ALL.slice();
+  var currentPage = 1;
+  var perPage = 20;
+  var typeFilter = 'all';
+  var sortOrder = 'desc';
+
+  function applyFilters() {
+    filtered = ALL.filter(function (h) {
+      return typeFilter === 'all' || h.type === typeFilter;
+    });
+    filtered.sort(function (a, b) {
+      var ta = new Date(a.completedAt).getTime();
+      var tb = new Date(b.completedAt).getTime();
+      return sortOrder === 'desc' ? tb - ta : ta - tb;
+    });
+    currentPage = 1;
+    render();
+  }
+
+  function render() {
+    var tbody = document.getElementById('history-tbody');
+    var info = document.getElementById('page-info');
+    var prev = document.getElementById('prev-btn');
+    var next = document.getElementById('next-btn');
+    var counter = document.getElementById('filtered-count');
+    var total = filtered.length;
+    counter.textContent = total;
+
+    var start, end;
+    if (perPage === 'all' || perPage >= total) {
+      start = 0; end = total;
+    } else {
+      start = (currentPage - 1) * perPage;
+      end = Math.min(start + perPage, total);
+    }
+    var pageItems = filtered.slice(start, end);
+
+    var rows = '';
+    if (pageItems.length === 0) {
+      rows = '<tr><td colspan="4" style="text-align:center;color:#999;">No entries match the current filter</td></tr>';
+    } else {
+      for (var i = 0; i < pageItems.length; i++) {
+        var h = pageItems[i];
+        var icon = h.type === 'workout' ? '&#127947;' : '&#129367;';
+        var date = h.completedAt.split('T')[0];
+        rows += '<tr><td>' + icon + ' ' + h.type + '</td><td>' + date + '</td><td>+' + h.xpGained + ' XP</td><td>' + (h.notes || '') + '</td></tr>';
+      }
+    }
+    tbody.innerHTML = rows;
+
+    if (perPage === 'all' || total <= (typeof perPage === 'number' ? perPage : total)) {
+      var totalPages = 1;
+      info.textContent = total === 0 ? 'No entries' : 'All ' + total + ' entr' + (total === 1 ? 'y' : 'ies');
+      prev.disabled = true;
+      next.disabled = true;
+    } else {
+      var totalPages = Math.max(1, Math.ceil(total / perPage));
+      if (currentPage > totalPages) currentPage = totalPages;
+      var dispStart = total === 0 ? 0 : start + 1;
+      info.textContent = 'Page ' + currentPage + ' of ' + totalPages + ' — entries ' + dispStart + '–' + end + ' of ' + total;
+      prev.disabled = currentPage <= 1;
+      next.disabled = currentPage >= totalPages;
+    }
+  }
+
+  document.getElementById('type-filter').addEventListener('change', function () { typeFilter = this.value; applyFilters(); });
+  document.getElementById('sort-order').addEventListener('change', function () { sortOrder = this.value; applyFilters(); });
+  document.getElementById('per-page').addEventListener('change', function () {
+    perPage = this.value === 'all' ? 'all' : parseInt(this.value, 10);
+    currentPage = 1;
+    render();
+  });
+  document.getElementById('prev-btn').addEventListener('click', function () { if (currentPage > 1) { currentPage--; render(); } });
+  document.getElementById('next-btn').addEventListener('click', function () {
+    var totalPages = perPage === 'all' ? 1 : Math.max(1, Math.ceil(filtered.length / perPage));
+    if (currentPage < totalPages) { currentPage++; render(); }
+  });
+
+  render();
+}());
+</script>
 
 <footer>Exported from Fitness Agent Layer &nbsp;|&nbsp; ${new Date().toISOString()}</footer>
 </body>

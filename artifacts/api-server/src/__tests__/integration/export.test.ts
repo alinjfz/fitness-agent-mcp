@@ -109,7 +109,7 @@ describe("GET /api/export/:userId", () => {
     });
   });
 
-  describe("HTML format", () => {
+  describe("HTML format — structure", () => {
     it("returns 200 with HTML content-type", async () => {
       const res = await request.get(`/api/export/${userId}?format=html`);
       expect(res.status).toBe(200);
@@ -134,6 +134,98 @@ describe("GET /api/export/:userId", () => {
     it("HTML contains XP value", async () => {
       const res = await request.get(`/api/export/${userId}?format=html`);
       expect(res.text).toContain("750");
+    });
+  });
+
+  describe("HTML format — paginated activity log", () => {
+    it("HTML contains the history data JSON blob", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain('id="history-data"');
+      expect(res.text).toContain('"type":"workout"');
+    });
+
+    it("history-data element contains all entries not just 20", async () => {
+      const bigUserId = uid("export_big");
+      try {
+        await createTestUser(bigUserId);
+        const bigHistory = Array.from({ length: 35 }, (_, i) => ({
+          type: i % 2 === 0 ? "workout" : "diet" as "workout" | "diet",
+          completedAt: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
+          xpGained: i % 2 === 0 ? 50 : 30,
+        }));
+        await db.insert(progress).values({
+          userId: bigUserId, xp: 1000, streak: 5, level: 2,
+          history: bigHistory, achievements: [], reminders: [],
+          lastLoggedAt: new Date(), updatedAt: new Date(),
+        });
+        const res = await request.get(`/api/export/${bigUserId}?format=html`);
+        const dataStart = res.text.indexOf('id="history-data"');
+        const dataEnd = res.text.indexOf("</script>", dataStart);
+        const jsonSlice = res.text.slice(dataStart, dataEnd);
+        const matches = (jsonSlice.match(/"completedAt"/g) ?? []).length;
+        expect(matches).toBe(35);
+      } finally {
+        await cleanupTestUser(bigUserId);
+      }
+    });
+
+    it("HTML contains pagination controls (prev and next buttons)", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain('id="prev-btn"');
+      expect(res.text).toContain('id="next-btn"');
+    });
+
+    it("HTML contains type filter select", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain('id="type-filter"');
+      expect(res.text).toContain("Workout only");
+      expect(res.text).toContain("Diet only");
+    });
+
+    it("HTML contains sort order select", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain('id="sort-order"');
+      expect(res.text).toContain("Newest first");
+      expect(res.text).toContain("Oldest first");
+    });
+
+    it("HTML contains per-page select with expected options", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain('id="per-page"');
+      expect(res.text).toContain(">10<");
+      expect(res.text).toContain(">20<");
+      expect(res.text).toContain(">50<");
+      expect(res.text).toContain(">All<");
+    });
+
+    it("HTML contains page-info span and history-tbody", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain('id="page-info"');
+      expect(res.text).toContain('id="history-tbody"');
+    });
+
+    it("HTML shows correct total entry count in log header", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain("of 2 entries");
+    });
+
+    it("history data entries are sorted newest-first by default in the blob", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      const dataEl = res.text.match(/<script type="application\/json" id="history-data">([\s\S]*?)<\/script>/);
+      expect(dataEl).not.toBeNull();
+      const entries = JSON.parse(dataEl![1]) as { completedAt: string }[];
+      if (entries.length >= 2) {
+        const first = new Date(entries[0].completedAt).getTime();
+        const second = new Date(entries[1].completedAt).getTime();
+        expect(first).toBeGreaterThanOrEqual(second);
+      }
+    });
+
+    it("HTML contains the JS initialisation function", async () => {
+      const res = await request.get(`/api/export/${userId}?format=html`);
+      expect(res.text).toContain("applyFilters");
+      expect(res.text).toContain("render");
+      expect(res.text).toContain("currentPage");
     });
   });
 });
