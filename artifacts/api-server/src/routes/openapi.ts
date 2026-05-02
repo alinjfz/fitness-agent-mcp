@@ -5,7 +5,7 @@ import { parse } from "yaml";
 
 const router: IRouter = Router();
 
-const yamlPath = resolve(__dirname, "../../../lib/api-spec/openapi.yaml");
+const yamlPath = resolve(process.cwd(), "../../lib/api-spec/openapi.yaml");
 
 router.get("/openapi.json", (_req, res) => {
   try {
