@@ -11,6 +11,7 @@ import Import from "@/pages/import";
 import Achievements from "@/pages/achievements";
 import Export from "@/pages/export";
 import Plan from "@/pages/plan";
+import GeneratePlan from "@/pages/generate-plan";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/achievements" component={Achievements} />
       <Route path="/export" component={Export} />
       <Route path="/plan" component={Plan} />
+      <Route path="/generate-plan" component={GeneratePlan} />
       <Route component={NotFound} />
     </Switch>
   );

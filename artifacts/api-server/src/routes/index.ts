@@ -14,6 +14,7 @@ import progressHistoryRouter from "./progressHistory";
 import ingestRouter from "./ingest";
 import deleteLogRouter from "./deleteLog";
 import seedHistoryRouter from "./seedHistory";
+import updateProfileRouter from "./updateProfile";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(progressHistoryRouter);
 router.use(ingestRouter);
 router.use(deleteLogRouter);
 router.use(seedHistoryRouter);
+router.use(updateProfileRouter);
 
 export default router;

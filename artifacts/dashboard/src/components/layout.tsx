@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, Award, Calendar, Download, Home, Upload, ChevronLeft, ChevronRight, Sun, Moon } from "lucide-react";
+import { Activity, Award, Calendar, Download, Home, Upload, ChevronLeft, ChevronRight, Sun, Moon, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useTheme } from "@/lib/theme-context";
@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: Home },
+  { href: "/generate-plan", label: "Generate Plan", icon: Sparkles },
   { href: "/plan", label: "Plan", icon: Calendar },
   { href: "/history", label: "History", icon: Activity },
   { href: "/achievements", label: "Achievements", icon: Award },
