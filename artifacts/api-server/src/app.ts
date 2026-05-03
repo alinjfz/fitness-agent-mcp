@@ -1,6 +1,8 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "node:path";
+import { existsSync } from "node:fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { initCronJobs } from "./lib/cron";
@@ -31,6 +33,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// Serve dashboard static files when built
+const dashboardDist = path.resolve(import.meta.dirname, "../../dashboard/dist/public");
+if (existsSync(dashboardDist)) {
+  app.use(express.static(dashboardDist));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(dashboardDist, "index.html"));
+  });
+}
 
 initCronJobs();
 
