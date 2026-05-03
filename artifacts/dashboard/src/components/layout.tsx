@@ -29,16 +29,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
           "w-full md:min-h-screen"
         )}
       >
-        <div className="h-16 flex items-center justify-between px-4 border-b border-border flex-shrink-0">
+        {/* Header: logo + theme toggle + collapse button */}
+        <div className="h-16 flex items-center gap-2 px-3 border-b border-border flex-shrink-0">
           {!collapsed && (
-            <h1 className="text-xl font-bold tracking-tight text-foreground uppercase">
+            <h1 className="flex-1 text-xl font-bold tracking-tight text-foreground uppercase truncate">
               Fitness<span className="text-primary">Dash</span>
             </h1>
           )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme" className="shrink-0">
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </TooltipContent>
+          </Tooltip>
+
           <Button
             variant="ghost"
             size="icon"
-            className={cn("ml-auto shrink-0", collapsed && "mx-auto")}
+            className="shrink-0"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -77,24 +90,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             return link;
           })}
         </nav>
-
-        <div className={cn("p-2 border-t border-border", collapsed ? "flex justify-center" : "flex justify-end px-4")}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggle}
-                aria-label="Toggle theme"
-              >
-                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side={collapsed ? "right" : "top"}>
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </TooltipContent>
-          </Tooltip>
-        </div>
       </aside>
 
       <main className="flex-1 overflow-auto">

@@ -5,7 +5,7 @@ import type { CompletionEvent } from "@workspace/db";
 
 const router: IRouter = Router();
 
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 500;
 const DEFAULT_LIMIT = 20;
 
 router.get("/progress/:userId/history", async (req, res) => {
