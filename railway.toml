@@ -6,4 +6,4 @@ buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @workspace/dashb
 startCommand = "node --enable-source-maps ./artifacts/api-server/dist/index.mjs"
 healthcheckPath = "/api/healthz"
 healthcheckTimeout = 30
-restartPolicyType = "on-failure"
+restartPolicyType = "ON_FAILURE"
