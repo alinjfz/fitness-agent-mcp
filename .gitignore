@@ -4,7 +4,7 @@
 dist
 tmp
 out-tsc
-*.tsbuildinfo
+**/*.tsbuildinfo
 .expo
 .expo-shared
 
@@ -44,6 +44,21 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Environment files
+.env
+.env.*
+.env.local
+.env.*.local
+
 # Replit
 .cache/
 .local/
+attached_assets/
+.agents/
+**/.replit-artifact/
+
+# Local SQLite database
+data/
+
+# Local MD files
+deploy-plan.md

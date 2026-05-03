@@ -11,7 +11,6 @@ import {
   progress,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { openai } from "@workspace/integrations-openai-ai-server";
 import type { CompletionEvent, Achievement } from "@workspace/db";
 import {
   XP_WORKOUT,
@@ -27,24 +26,6 @@ import {
 } from "../lib/gamification";
 
 const router: IRouter = Router();
-
-const DIET_SYSTEM_PROMPT = `You are a professional nutritionist. Generate a structured 7-day meal plan based on the user profile provided.
-Output ONLY valid JSON — no markdown, no prose:
-{"meals":[{"name":"Breakfast","time":"08:00","calories":500,"protein":30,"carbs":50,"fat":15,"ingredients":["oats","banana","milk"]}],"dailyCalories":2000,"macros":{"proteinG":150,"carbsG":200,"fatG":65},"notes":"Summary"}
-Rules: NEVER include allergens, respect preferences, match calories to goal, stay within budget.`;
-
-const WORKOUT_SYSTEM_PROMPT = `You are a professional fitness trainer. Generate a structured weekly workout plan based on the user profile provided.
-Output ONLY valid JSON — no markdown, no prose:
-{"sessions":[{"day":"monday","name":"Push Day","durationMin":60,"exercises":[{"name":"Bench Press","sets":4,"reps":8,"restSec":120}]}],"notes":"Summary"}
-Rules: Only use available days, respect injuries and equipment, match duration to sessionDurationMin.`;
-
-const SCHEDULE_SYSTEM_PROMPT = `Generate calendar events based on the fitness plan.
-Output ONLY valid JSON: {"events":[{"title":"Push Day","date":"2026-05-05","time":"07:00","type":"workout","durationMin":60}]}
-Rules: ISO date YYYY-MM-DD, 24h time HH:MM, type must be "workout"|"meal"|"check_in".`;
-
-const NORMALIZE_SYSTEM_PROMPT = `Extract structured fitness data from messy user text.
-Schema: {"profile":{"name"?:string,"age"?:int,"weightKg"?:number,"heightCm"?:number,"goal"?:"lose_weight"|"build_muscle"|"maintain"|"improve_endurance","allergies"?:string[],"preferences"?:string[],"budgetPerWeek"?:number,"availableDays"?:("monday"|"tuesday"|"wednesday"|"thursday"|"friday"|"saturday"|"sunday")[],"sessionDurationMin"?:int,"equipment"?:string[],"injuries"?:string[],"mode"?:"auto"|"confirm"}}
-Only include fields you can confidently extract. Return JSON: {"extracted":{"profile":{...}},"confidence":"high"|"medium"|"low","notes":"string"}`;
 
 function createMcpServer(): McpServer {
   const server = new McpServer({ name: "fitness-agent", version: "2.0.0" });
@@ -69,7 +50,7 @@ function createMcpServer(): McpServer {
       const xp = prog?.xp ?? 0;
       const level = computeLevel(xp);
       const state = {
-        profile: { userId: profile.userId, name: profile.name, age: profile.age, weightKg: profile.weightKg ? Number(profile.weightKg) : null, heightCm: profile.heightCm ? Number(profile.heightCm) : null, goal: profile.goal, allergies: profile.allergies, preferences: profile.preferences, budgetPerWeek: profile.budgetPerWeek ? Number(profile.budgetPerWeek) : null, availableDays: profile.availableDays, sessionDurationMin: profile.sessionDurationMin, equipment: profile.equipment, injuries: profile.injuries, mode: profile.mode },
+        profile: { userId: profile.userId, name: profile.name, age: profile.age, weightKg: profile.weightKg ?? null, heightCm: profile.heightCm ?? null, goal: profile.goal, allergies: profile.allergies, preferences: profile.preferences, budgetPerWeek: profile.budgetPerWeek ?? null, availableDays: profile.availableDays, sessionDurationMin: profile.sessionDurationMin, equipment: profile.equipment, injuries: profile.injuries, mode: profile.mode },
         dietPlan: dietPlan ? { meals: dietPlan.meals, dailyCalories: dietPlan.dailyCalories, macros: dietPlan.macros, notes: dietPlan.notes } : null,
         workoutPlan: workoutPlan ? { sessions: workoutPlan.sessions, notes: workoutPlan.notes } : null,
         schedule: schedule ? { events: schedule.events } : null,
@@ -92,7 +73,7 @@ function createMcpServer(): McpServer {
     async ({ userId, profile, dietPlan, workoutPlan, schedule }) => {
       const now = new Date();
       if (profile) {
-        await db.insert(userProfiles).values({ userId, name: profile.name ?? "Unknown", age: profile.age, weightKg: profile.weightKg != null ? String(profile.weightKg) : undefined, heightCm: profile.heightCm != null ? String(profile.heightCm) : undefined, goal: profile.goal ?? "maintain", allergies: profile.allergies ?? [], preferences: profile.preferences ?? [], budgetPerWeek: profile.budgetPerWeek != null ? String(profile.budgetPerWeek) : undefined, availableDays: profile.availableDays ?? [], sessionDurationMin: profile.sessionDurationMin, equipment: profile.equipment ?? [], injuries: profile.injuries ?? [], mode: profile.mode ?? "auto", updatedAt: now }).onConflictDoUpdate({ target: userProfiles.userId, set: { ...(profile.name !== undefined && { name: profile.name }), ...(profile.age !== undefined && { age: profile.age }), ...(profile.weightKg !== undefined && { weightKg: String(profile.weightKg) }), ...(profile.heightCm !== undefined && { heightCm: String(profile.heightCm) }), ...(profile.goal !== undefined && { goal: profile.goal }), ...(profile.allergies !== undefined && { allergies: profile.allergies }), ...(profile.preferences !== undefined && { preferences: profile.preferences }), ...(profile.budgetPerWeek !== undefined && { budgetPerWeek: String(profile.budgetPerWeek) }), ...(profile.availableDays !== undefined && { availableDays: profile.availableDays }), ...(profile.sessionDurationMin !== undefined && { sessionDurationMin: profile.sessionDurationMin }), ...(profile.equipment !== undefined && { equipment: profile.equipment }), ...(profile.injuries !== undefined && { injuries: profile.injuries }), ...(profile.mode !== undefined && { mode: profile.mode }), updatedAt: now } });
+        await db.insert(userProfiles).values({ userId, name: profile.name ?? "Unknown", age: profile.age, weightKg: profile.weightKg ?? undefined, heightCm: profile.heightCm ?? undefined, goal: profile.goal ?? "maintain", allergies: profile.allergies ?? [], preferences: profile.preferences ?? [], budgetPerWeek: profile.budgetPerWeek ?? undefined, availableDays: profile.availableDays ?? [], sessionDurationMin: profile.sessionDurationMin, equipment: profile.equipment ?? [], injuries: profile.injuries ?? [], mode: profile.mode ?? "auto", updatedAt: now }).onConflictDoUpdate({ target: userProfiles.userId, set: { ...(profile.name !== undefined && { name: profile.name }), ...(profile.age !== undefined && { age: profile.age }), ...(profile.weightKg !== undefined && { weightKg: profile.weightKg }), ...(profile.heightCm !== undefined && { heightCm: profile.heightCm }), ...(profile.goal !== undefined && { goal: profile.goal }), ...(profile.allergies !== undefined && { allergies: profile.allergies }), ...(profile.preferences !== undefined && { preferences: profile.preferences }), ...(profile.budgetPerWeek !== undefined && { budgetPerWeek: profile.budgetPerWeek }), ...(profile.availableDays !== undefined && { availableDays: profile.availableDays }), ...(profile.sessionDurationMin !== undefined && { sessionDurationMin: profile.sessionDurationMin }), ...(profile.equipment !== undefined && { equipment: profile.equipment }), ...(profile.injuries !== undefined && { injuries: profile.injuries }), ...(profile.mode !== undefined && { mode: profile.mode }), updatedAt: now } });
       }
       if (dietPlan) {
         await db.insert(dietPlans).values({ userId, meals: dietPlan.meals, dailyCalories: dietPlan.dailyCalories, macros: dietPlan.macros, notes: dietPlan.notes, updatedAt: now }).onConflictDoUpdate({ target: dietPlans.userId, set: { meals: dietPlan.meals, dailyCalories: dietPlan.dailyCalories, macros: dietPlan.macros, notes: dietPlan.notes, updatedAt: now } });
@@ -153,48 +134,114 @@ function createMcpServer(): McpServer {
 
   server.tool(
     "normalize_user_input",
-    "Parse messy, informal user text and extract structured fitness profile data. Returns only the fields that could be confidently extracted.",
+    `Extract structured fitness profile data from the user's raw input text yourself, then call this tool with your extracted result.
+
+Schema (all fields optional — include only what you can confidently extract):
+{
+  name?: string,
+  age?: integer,
+  weightKg?: number  (convert lbs ÷ 2.205),
+  heightCm?: number  (convert ft/in: feet×30.48 + inches×2.54),
+  goal?: "lose_weight"|"build_muscle"|"maintain"|"improve_endurance",
+  allergies?: string[], preferences?: string[],
+  budgetPerWeek?: number,
+  availableDays?: ("monday"|"tuesday"|"wednesday"|"thursday"|"friday"|"saturday"|"sunday")[],
+  sessionDurationMin?: integer,
+  equipment?: string[], injuries?: string[],
+  mode?: "auto"|"confirm"
+}
+
+Pass extracted data in the \`extracted\` field with a confidence level ("high"|"medium"|"low") and notes on what couldn't be extracted.`,
     {
       input: z.string().describe("Raw, unstructured user text about their fitness preferences, schedule, dietary needs, etc."),
-      userId: z.string().optional().describe("If provided, existing profile is used as context"),
+      extracted: z.object({
+        name: z.string().optional(),
+        age: z.number().int().optional(),
+        weightKg: z.number().optional(),
+        heightCm: z.number().optional(),
+        goal: z.enum(["lose_weight", "build_muscle", "maintain", "improve_endurance"]).optional(),
+        allergies: z.array(z.string()).optional(),
+        preferences: z.array(z.string()).optional(),
+        budgetPerWeek: z.number().optional(),
+        availableDays: z.array(z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])).optional(),
+        sessionDurationMin: z.number().int().optional(),
+        equipment: z.array(z.string()).optional(),
+        injuries: z.array(z.string()).optional(),
+        mode: z.enum(["auto", "confirm"]).optional(),
+        confidence: z.enum(["high", "medium", "low"]).optional(),
+        notes: z.string().optional(),
+      }).optional().describe("Extracted profile data — you extract this yourself from the input, then pass it here"),
+      userId: z.string().optional().describe("If provided, used as context for existing profile"),
     },
-    async ({ input, userId }) => {
-      let contextBlock = "";
-      if (userId) {
-        const existing = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null);
-        if (existing) contextBlock = `\n\nExisting profile:\n${JSON.stringify({ name: existing.name, age: existing.age, goal: existing.goal, allergies: existing.allergies, preferences: existing.preferences, availableDays: existing.availableDays, equipment: existing.equipment, injuries: existing.injuries }, null, 2)}`;
+    async ({ input, extracted, userId }) => {
+      if (extracted) {
+        const { confidence, notes, ...profile } = extracted;
+        return { content: [{ type: "text", text: JSON.stringify({ extracted: { profile }, rawInput: input, confidence: confidence ?? "high", notes: notes ?? "" }) }] };
       }
-      const completion = await openai.chat.completions.create({ model: "gpt-5-mini", messages: [{ role: "system", content: NORMALIZE_SYSTEM_PROMPT }, { role: "user", content: `Extract fitness data from: "${input}"${contextBlock}` }], response_format: { type: "json_object" } });
-      const raw = completion.choices[0]?.message?.content ?? "{}";
-      let parsed: { extracted: Record<string, unknown>; confidence: string; notes: string };
-      try { parsed = JSON.parse(raw) as typeof parsed; }
-      catch { return { content: [{ type: "text", text: JSON.stringify({ error: "Failed to parse AI response" }) }], isError: true }; }
-      return { content: [{ type: "text", text: JSON.stringify({ extracted: parsed.extracted ?? {}, rawInput: input, confidence: parsed.confidence ?? "low", notes: parsed.notes ?? "" }) }] };
+      // Fallback: instruct the AI to retry with extracted data
+      let existingProfile = null;
+      if (userId) {
+        existingProfile = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null);
+      }
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            requiresExtraction: true,
+            message: "Extract structured fitness data from the input yourself, then call this tool again with the extracted field populated.",
+            input,
+            schema: { name: "string?", age: "integer?", weightKg: "number?", heightCm: "number?", goal: "lose_weight|build_muscle|maintain|improve_endurance?", allergies: "string[]?", preferences: "string[]?", budgetPerWeek: "number?", availableDays: "day[]?", sessionDurationMin: "integer?", equipment: "string[]?", injuries: "string[]?", mode: "auto|confirm?" },
+            existingProfile: existingProfile ? { name: existingProfile.name, age: existingProfile.age, goal: existingProfile.goal, allergies: existingProfile.allergies, preferences: existingProfile.preferences, availableDays: existingProfile.availableDays, equipment: existingProfile.equipment, injuries: existingProfile.injuries } : null,
+          }),
+        }],
+      };
     }
   );
 
   server.tool(
     "generate_plan",
-    "AI-generate a complete diet or workout plan based on the user's stored profile. The plan is automatically saved. In confirm mode, returns a preview and requires confirmed:true to save.",
+    `Generate a complete diet or workout plan for this user yourself, then call this tool with your result.
+
+Call get_state first to load the user's profile. Then generate the plan:
+
+DIET PLAN: { meals:[{name,time,calories,protein,carbs,fat,ingredients[]}], dailyCalories, macros:{proteinG,carbsG,fatG}, notes? }
+  Rules: no allergens from profile.allergies, match calories to goal, stay within budgetPerWeek
+
+WORKOUT PLAN: { sessions:[{day,name,durationMin,exercises:[{name,sets,reps,restSec}]}], notes? }
+  Rules: only days from profile.availableDays, respect injuries, match durationMin to profile.sessionDurationMin
+
+Pass your generated plan in the \`plan\` field.
+In confirm mode (profile.mode="confirm"): present the plan to the user for approval first, then call with confirmed:true.`,
     {
       userId: z.string(),
       type: z.enum(["diet", "workout"]).describe("Type of plan to generate"),
-      confirmed: z.boolean().optional().describe("Set to true to save in confirm mode"),
+      plan: z.object({
+        meals: z.array(z.any()).optional(),
+        sessions: z.array(z.any()).optional(),
+        dailyCalories: z.number().optional(),
+        macros: z.any().optional(),
+        notes: z.string().optional(),
+      }).optional().describe("The plan you generated — pass diet or workout plan structure here"),
+      confirmed: z.boolean().optional().describe("Set to true to save in confirm mode after user approved"),
     },
-    async ({ userId, type, confirmed }) => {
+    async ({ userId, type, plan, confirmed }) => {
       const profile = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null);
       if (!profile) return { content: [{ type: "text", text: JSON.stringify({ error: `No profile found for '${userId}'. Call save_state first.` }) }], isError: true };
 
-      const userContext = type === "diet"
-        ? `Goal: ${profile.goal}, Allergies: ${(profile.allergies as string[]).join(", ") || "none"}, Preferences: ${(profile.preferences as string[]).join(", ") || "none"}, Budget/week: ${profile.budgetPerWeek ? `$${profile.budgetPerWeek}` : "no limit"}, Weight: ${profile.weightKg ?? "unknown"}kg`
-        : `Goal: ${profile.goal}, Available days: ${(profile.availableDays as string[]).join(", ")}, Session: ${profile.sessionDurationMin ?? 60}min, Equipment: ${(profile.equipment as string[]).join(", ") || "bodyweight"}, Injuries: ${(profile.injuries as string[]).join(", ") || "none"}`;
-
-      const systemPrompt = type === "diet" ? DIET_SYSTEM_PROMPT : WORKOUT_SYSTEM_PROMPT;
-      const completion = await openai.chat.completions.create({ model: "gpt-5-mini", messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `Generate a ${type} plan:\n${userContext}` }], response_format: { type: "json_object" } });
-      const raw = completion.choices[0]?.message?.content ?? "{}";
-      let plan: Record<string, unknown>;
-      try { plan = JSON.parse(raw) as Record<string, unknown>; }
-      catch { return { content: [{ type: "text", text: JSON.stringify({ error: "AI returned invalid JSON" }) }], isError: true }; }
+      if (!plan) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              requiresPlan: true,
+              message: `Generate a ${type} plan yourself using the profile below, then call this tool again with the plan field populated.`,
+              profile: { goal: profile.goal, allergies: profile.allergies, preferences: profile.preferences, budgetPerWeek: profile.budgetPerWeek, weightKg: profile.weightKg, availableDays: profile.availableDays, sessionDurationMin: profile.sessionDurationMin, equipment: profile.equipment, injuries: profile.injuries },
+              dietSchema: "{ meals:[{name,time,calories,protein,carbs,fat,ingredients[]}], dailyCalories, macros:{proteinG,carbsG,fatG}, notes? }",
+              workoutSchema: "{ sessions:[{day,name,durationMin,exercises:[{name,sets,reps,restSec}]}], notes? }",
+            }),
+          }],
+        };
+      }
 
       const isConfirmMode = profile.mode === "confirm";
       const shouldSave = !isConfirmMode || confirmed === true;
@@ -202,9 +249,9 @@ function createMcpServer(): McpServer {
       if (shouldSave) {
         const now = new Date();
         if (type === "diet") {
-          await db.insert(dietPlans).values({ userId, meals: plan.meals, dailyCalories: plan.dailyCalories as number, macros: plan.macros, notes: plan.notes as string | undefined, updatedAt: now }).onConflictDoUpdate({ target: dietPlans.userId, set: { meals: plan.meals, dailyCalories: plan.dailyCalories as number, macros: plan.macros, notes: plan.notes as string | undefined, updatedAt: now } });
+          await db.insert(dietPlans).values({ userId, meals: plan.meals, dailyCalories: plan.dailyCalories as number, macros: plan.macros, notes: plan.notes, updatedAt: now }).onConflictDoUpdate({ target: dietPlans.userId, set: { meals: plan.meals, dailyCalories: plan.dailyCalories as number, macros: plan.macros, notes: plan.notes, updatedAt: now } });
         } else {
-          await db.insert(workoutPlans).values({ userId, sessions: plan.sessions, notes: plan.notes as string | undefined, updatedAt: now }).onConflictDoUpdate({ target: workoutPlans.userId, set: { sessions: plan.sessions, notes: plan.notes as string | undefined, updatedAt: now } });
+          await db.insert(workoutPlans).values({ userId, sessions: plan.sessions, notes: plan.notes, updatedAt: now }).onConflictDoUpdate({ target: workoutPlans.userId, set: { sessions: plan.sessions, notes: plan.notes, updatedAt: now } });
         }
       }
 
@@ -215,46 +262,76 @@ function createMcpServer(): McpServer {
 
   server.tool(
     "schedule_events",
-    "Generate and save calendar events for the user's fitness plan. Expands a description like 'schedule workouts for a month' into structured daily events.",
+    `Generate calendar events for the user's fitness schedule yourself, then call this tool with your events array.
+
+Call get_state first to load the profile and workoutPlan. Then generate events for the date range:
+
+Event schema: { title:string, date:"YYYY-MM-DD", time:"HH:MM" (24h), type:"workout"|"meal"|"check_in", durationMin:number }
+
+Rules:
+- Match workout sessions to correct days of week (profile.availableDays + workoutPlan.sessions)
+- Default times: 07:00 for workouts, 08:00/13:00/19:00 for meals
+- Default: 30 days from today if not specified
+
+Pass events in the \`events\` field.
+mode="append" (default) adds to existing events. mode="replace" overwrites.
+In confirm mode: show the event list to the user first, then call with confirmed:true.`,
     {
       userId: z.string(),
+      events: z.array(z.object({
+        title: z.string(),
+        date: z.string(),
+        time: z.string(),
+        type: z.enum(["workout", "meal", "check_in"]),
+        durationMin: z.number().int(),
+      })).optional().describe("The events array you generated — pass it here"),
+      mode: z.enum(["append", "replace"]).optional().describe("append (default) adds to existing events, replace overwrites"),
       description: z.string().optional().describe("Natural language description, e.g. 'schedule my workouts for May'"),
       startDate: z.string().optional().describe("Start date YYYY-MM-DD, defaults to today"),
       durationDays: z.number().int().optional().describe("Number of days to schedule, default 30"),
-      confirmed: z.boolean().optional().describe("Set to true to save in confirm mode"),
+      confirmed: z.boolean().optional().describe("Set to true to save in confirm mode after user approved"),
     },
-    async ({ userId, description, startDate, durationDays, confirmed }) => {
+    async ({ userId, events, mode = "append", description, startDate, durationDays, confirmed }) => {
       const [profile, workoutPlan] = await Promise.all([
         db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).then((r) => r[0] ?? null),
         db.select().from(workoutPlans).where(eq(workoutPlans.userId, userId)).then((r) => r[0] ?? null),
       ]);
       if (!profile) return { content: [{ type: "text", text: JSON.stringify({ error: `No profile found for '${userId}'` }) }], isError: true };
 
-      const sd = startDate ?? new Date().toISOString().split("T")[0];
-      const dd = durationDays ?? 30;
-      type WorkoutSession = { day: string; name: string; durationMin: number };
-      const sessions = (workoutPlan?.sessions as WorkoutSession[] | null) ?? [];
+      if (!events) {
+        const sd = startDate ?? new Date().toISOString().split("T")[0];
+        const dd = durationDays ?? 30;
+        type WorkoutSession = { day: string; name: string; durationMin: number };
+        const sessions = (workoutPlan?.sessions as WorkoutSession[] | null) ?? [];
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              requiresEvents: true,
+              message: "Generate events yourself using the context below, then call this tool again with the events field populated.",
+              context: { startDate: sd, durationDays: dd, description: description ?? "Schedule fitness events", availableDays: profile.availableDays, sessionDurationMin: profile.sessionDurationMin ?? 60, sessions: sessions.map((s) => `${s.day}: ${s.name} (${s.durationMin}min)`) },
+              eventSchema: "{ title:string, date:'YYYY-MM-DD', time:'HH:MM', type:'workout'|'meal'|'check_in', durationMin:number }",
+            }),
+          }],
+        };
+      }
 
-      const contextLines = [`Start date: ${sd}`, `Duration: ${dd} days`, `Available days: ${(profile.availableDays as string[]).join(", ")}`, `Session: ${profile.sessionDurationMin ?? 60}min`, `Description: ${description ?? "Schedule fitness events"}`, sessions.length > 0 ? `Sessions: ${sessions.map((s) => `${s.day}: ${s.name} (${s.durationMin}min)`).join("; ")}` : ""].filter(Boolean);
-
-      const completion = await openai.chat.completions.create({ model: "gpt-5-mini", messages: [{ role: "system", content: SCHEDULE_SYSTEM_PROMPT }, { role: "user", content: contextLines.join("\n") }], response_format: { type: "json_object" } });
-      const raw = completion.choices[0]?.message?.content ?? "{}";
-      let result: { events: unknown[] };
-      try { result = JSON.parse(raw) as typeof result; }
-      catch { return { content: [{ type: "text", text: JSON.stringify({ error: "AI returned invalid JSON" }) }], isError: true }; }
-
-      const events = result.events ?? [];
       const isConfirmMode = profile.mode === "confirm";
       const shouldSave = !isConfirmMode || confirmed === true;
 
       if (shouldSave) {
         const now = new Date();
-        const existing = await db.select().from(schedules).where(eq(schedules.userId, userId)).then((r) => r[0] ?? null);
-        const allEvents = [...((existing?.events as unknown[]) ?? []), ...events];
+        let allEvents: unknown[];
+        if (mode === "replace") {
+          allEvents = events;
+        } else {
+          const existing = await db.select().from(schedules).where(eq(schedules.userId, userId)).then((r) => r[0] ?? null);
+          allEvents = [...((existing?.events as unknown[]) ?? []), ...events];
+        }
         await db.insert(schedules).values({ userId, events: allEvents, updatedAt: now }).onConflictDoUpdate({ target: schedules.userId, set: { events: allEvents, updatedAt: now } });
       }
 
-      const out = { events, count: events.length, saved: shouldSave, startDate: sd, durationDays: dd, ...(isConfirmMode && !confirmed ? { requiresConfirmation: true, message: "Preview only. Call schedule_events again with confirmed:true to save." } : {}) };
+      const out = { events, count: events.length, saved: shouldSave, mode, ...(isConfirmMode && !confirmed ? { requiresConfirmation: true, message: "Preview only. Call schedule_events again with confirmed:true to save." } : {}) };
       return { content: [{ type: "text", text: JSON.stringify(out) }] };
     }
   );
@@ -335,17 +412,22 @@ function createMcpServer(): McpServer {
       const workoutLogs = history.filter((h) => h.type === "workout").length;
       const dietLogs = history.filter((h) => h.type === "diet").length;
 
+      const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+      const baseUrl =
+        process.env.PUBLIC_URL?.replace(/\/$/, "") ??
+        (railwayDomain ? `https://${railwayDomain}` : `http://localhost:${process.env.PORT ?? 8080}`);
+
       const report = {
         exportedAt: new Date().toISOString(), userId,
-        profile: { name: profile.name, goal: profile.goal, age: profile.age, weightKg: profile.weightKg ? Number(profile.weightKg) : null, mode: profile.mode },
+        profile: { name: profile.name, goal: profile.goal, age: profile.age, weightKg: profile.weightKg ?? null, mode: profile.mode },
         progress: { xp, streak: prog?.streak ?? 0, level: computeLevel(xp), xpToNextLevel: xpToNextLevel(xp), workoutLogs, dietLogs, totalLogs: workoutLogs + dietLogs },
         achievements: achievements.map((a) => ({ name: a.name, description: a.description, earnedAt: a.earnedAt })),
         dietPlan: dietPlan ? { dailyCalories: dietPlan.dailyCalories, macros: dietPlan.macros } : null,
         workoutPlan: workoutPlan ? { sessionCount: (workoutPlan.sessions as unknown[]).length } : null,
         schedule: schedule ? { eventCount: (schedule.events as unknown[]).length } : null,
         recentHistory: history.slice(-10),
-        downloadUrl: `/api/export/${userId}?format=${format}`,
-        ...(format === "html" && { embedUrl: `/api/export/${userId}?format=html&embed=true` }),
+        downloadUrl: `${baseUrl}/api/export/${userId}?format=${format}`,
+        ...(format === "html" && { embedUrl: `${baseUrl}/api/export/${userId}?format=html&embed=true` }),
       };
 
       return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };

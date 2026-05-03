@@ -51,8 +51,8 @@ router.get("/export/:userId", async (req, res) => {
       profile: {
         name: profile.name,
         age: profile.age,
-        weightKg: profile.weightKg ? Number(profile.weightKg) : null,
-        heightCm: profile.heightCm ? Number(profile.heightCm) : null,
+        weightKg: profile.weightKg ?? null,
+        heightCm: profile.heightCm ?? null,
         goal: profile.goal,
         allergies: profile.allergies,
         preferences: profile.preferences,

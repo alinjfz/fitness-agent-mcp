@@ -1,98 +1,70 @@
 import {
-  pgTable,
-  serial,
+  sqliteTable,
   text,
   integer,
-  jsonb,
-  timestamp,
-  numeric,
-} from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+  real,
+} from "drizzle-orm/sqlite-core";
 
-export const userProfiles = pgTable("user_profiles", {
-  id: serial("id").primaryKey(),
+export const userProfiles = sqliteTable("user_profiles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").notNull().unique(),
   name: text("name").notNull(),
   age: integer("age"),
-  weightKg: numeric("weight_kg", { precision: 5, scale: 2 }),
-  heightCm: numeric("height_cm", { precision: 5, scale: 2 }),
+  weightKg: real("weight_kg"),
+  heightCm: real("height_cm"),
   goal: text("goal").notNull(),
-  allergies: jsonb("allergies")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
-  preferences: jsonb("preferences")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
-  budgetPerWeek: numeric("budget_per_week", { precision: 8, scale: 2 }),
-  availableDays: jsonb("available_days")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
+  allergies: text("allergies", { mode: "json" }).$type<string[]>().$defaultFn(() => []).notNull(),
+  preferences: text("preferences", { mode: "json" }).$type<string[]>().$defaultFn(() => []).notNull(),
+  budgetPerWeek: real("budget_per_week"),
+  availableDays: text("available_days", { mode: "json" }).$type<string[]>().$defaultFn(() => []).notNull(),
   sessionDurationMin: integer("session_duration_min"),
-  equipment: jsonb("equipment")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
-  injuries: jsonb("injuries")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
+  equipment: text("equipment", { mode: "json" }).$type<string[]>().$defaultFn(() => []).notNull(),
+  injuries: text("injuries", { mode: "json" }).$type<string[]>().$defaultFn(() => []).notNull(),
   mode: text("mode").notNull().default("auto"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
 });
 
-export const dietPlans = pgTable("diet_plans", {
-  id: serial("id").primaryKey(),
+export const dietPlans = sqliteTable("diet_plans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").notNull().unique(),
-  meals: jsonb("meals").notNull(),
+  meals: text("meals", { mode: "json" }).notNull(),
   dailyCalories: integer("daily_calories").notNull(),
-  macros: jsonb("macros").notNull(),
+  macros: text("macros", { mode: "json" }).notNull(),
   notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
 });
 
-export const workoutPlans = pgTable("workout_plans", {
-  id: serial("id").primaryKey(),
+export const workoutPlans = sqliteTable("workout_plans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").notNull().unique(),
-  sessions: jsonb("sessions").notNull(),
+  sessions: text("sessions", { mode: "json" }).notNull(),
   notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
 });
 
-export const schedules = pgTable("schedules", {
-  id: serial("id").primaryKey(),
+export const schedules = sqliteTable("schedules", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").notNull().unique(),
-  events: jsonb("events").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  events: text("events", { mode: "json" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
 });
 
-export const progress = pgTable("progress", {
-  id: serial("id").primaryKey(),
+export const progress = sqliteTable("progress", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").notNull().unique(),
   xp: integer("xp").notNull().default(0),
   streak: integer("streak").notNull().default(0),
   level: integer("level").notNull().default(1),
-  history: jsonb("history")
-    .$type<CompletionEvent[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
-  achievements: jsonb("achievements")
-    .$type<Achievement[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
-  reminders: jsonb("reminders")
-    .$type<Reminder[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
-  lastLoggedAt: timestamp("last_logged_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  history: text("history", { mode: "json" }).$type<CompletionEvent[]>().$defaultFn(() => []).notNull(),
+  achievements: text("achievements", { mode: "json" }).$type<Achievement[]>().$defaultFn(() => []).notNull(),
+  reminders: text("reminders", { mode: "json" }).$type<Reminder[]>().$defaultFn(() => []).notNull(),
+  lastLoggedAt: integer("last_logged_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()).notNull(),
 });
 
 export type CompletionEvent = {
