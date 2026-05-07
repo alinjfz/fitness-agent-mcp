@@ -42,17 +42,17 @@ Claude / Copilot          ChatGPT Custom GPT
     └─ MCP JSON-RPC ──────┐   └─ REST/OpenAPI ──┐
                           ▼                      ▼
               ┌──────────────────────────────────────┐
-              │        Express API  (/api/*)          │
+              │        Express API  (/api/*)         │
               │                                      │
               │  MCP tools (8)     REST routes       │
-              │  get_state         /state             │
-              │  save_state        /log-completion    │
-              │  log_completion    /normalize         │
+              │  get_state         /state            │
+              │  save_state        /log-completion   │
+              │  log_completion    /normalize        │
               │  normalize_user_input /generate-plan │
               │  generate_plan     /schedule-events  │
               │  schedule_events   /export           │
               │  get_history       /progress/history │
-              │  export_report     /healthz           │
+              │  export_report     /healthz          │
               │                                      │
               │  Gamification engine + node-cron     │
               └──────────────────┬───────────────────┘
