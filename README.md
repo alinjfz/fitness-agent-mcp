@@ -1,6 +1,6 @@
 # Fitness Agent MCP
 
-A zero-dependency Express API that acts as a universal fitness intelligence layer for AI assistants. Claude, ChatGPT, and GitHub Copilot all share the same state, gamification engine, and data — Claude and Copilot via the built-in MCP server, ChatGPT via OpenAPI Custom Actions.
+A zero-dependency Express API that acts as a universal fitness intelligence layer for AI assistants. Claude, ChatGPT, and GitHub Copilot all share the same state, gamification engine, and data. Claude and Copilot via the built-in MCP server, ChatGPT via OpenAPI Custom Actions.
 
 **No OpenAI key. No database server. One deployed URL.**
 
